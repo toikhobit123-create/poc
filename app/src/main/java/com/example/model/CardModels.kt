@@ -73,7 +73,10 @@ enum class CardEffectType {
     PURGE_TERROR_CURSE,
     DISCARD_HAND_BURN,
     PREDICT_DRAW,
-    MANIFEST_SPELL
+    MANIFEST_SPELL,
+    FROSTBITE_TWO,
+    WINGS_OF_CRYOPHOENIX,
+    SUMMON_TWO_GIANTS
 }
 
 data class CardTemplate(
@@ -96,7 +99,8 @@ data class CardTemplate(
     val levelUpPowerBonus: Int = 1,
     val levelUpHealthBonus: Int = 1,
     val countdownRounds: Int = 0,
-    val isCollectibleReward: Boolean = true
+    val isCollectibleReward: Boolean = true,
+    val rarity: Rarity = Rarity.COMMON
 )
 
 data class DeckCardEntry(
@@ -144,7 +148,8 @@ data class UnitOnBoard(
     val levelProgress: Int = 0,
     val attachedItems: List<ItemTemplate> = emptyList(),
     val equippedGearName: String? = null,
-    val countdownRemaining: Int = 0
+    val countdownRemaining: Int = 0,
+    val hasEnlightenedBonusApplied: Boolean = false
 ) {
     val effectivePower: Int
         get() = if (isFrostbitten) 0 else maxOf(0, power - gloomStacks)

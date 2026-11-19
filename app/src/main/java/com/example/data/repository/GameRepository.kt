@@ -42,33 +42,45 @@ class GameRepository(
         }
 
     suspend fun ensureSeeded() = withContext(ioDispatcher) {
+        val allRelicIds = CardCatalog.relics.map { it.id }
         val existingMeta = dao.getPlayerMeta()
         if (existingMeta == null) {
-            dao.upsertPlayerMeta(PlayerMetaEntity.fromDomain(LegendProfile()))
+            dao.upsertPlayerMeta(
+                PlayerMetaEntity.fromDomain(
+                    LegendProfile(
+                        legendLevel = 30,
+                        legendPoints = 0,
+                        wildFragments = 999_999,
+                        starCrystals = 999_999,
+                        novaCrystals = 999_999,
+                        gemstones = 999_999,
+                        ownedRelicIds = allRelicIds
+                    )
+                )
+            )
         }
 
         for (champ in CardCatalog.champions) {
             val existing = dao.getChampionLoadout(champ.id)
             if (existing == null) {
-                val initialUnlocked = champ.unlockFragmentCost == 0
                 val initialRelics = when (champ.id) {
                     "champ_jinx" -> listOf("relic_ludens_tempest", null, null)
                     "champ_lux" -> listOf("relic_archangels_staff", null, null)
                     "champ_yasuo" -> listOf("relic_guinsoos_rageblade", null, null)
+                    "champ_anivia" -> listOf("relic_ludens_tempest", "relic_starforged", "relic_archangels_staff")
                     else -> listOf(null, null, null)
                 }
-                val initialFragments = if (initialUnlocked) 15 else 5
                 val loadout = ChampionLoadout(
                     championId = champ.id,
-                    isUnlocked = initialUnlocked,
-                    starLevel = if (initialUnlocked) 1 else 0,
-                    championLevel = if (initialUnlocked) 4 else 1,
+                    isUnlocked = true,
+                    starLevel = if (champ.id == "champ_anivia") 2 else 1,
+                    championLevel = if (champ.id == "champ_anivia") 30 else 4,
                     championXp = 0,
-                    fragments = initialFragments,
+                    fragments = 99_999,
                     unlockedConstellationNodes = emptyList(),
                     equippedRelics = initialRelics,
-                    unlockedRelicSlots = 2,
-                    cosmicForgedSlots = 0
+                    unlockedRelicSlots = 3,
+                    cosmicForgedSlots = if (champ.id == "champ_anivia") 3 else 0
                 )
                 dao.upsertChampionLoadout(ChampionLoadoutEntity.fromDomain(loadout))
             }

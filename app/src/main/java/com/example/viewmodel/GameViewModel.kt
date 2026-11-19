@@ -22,7 +22,10 @@ import com.example.model.MapNode
 import com.example.model.NodeType
 import com.example.model.PowerTemplate
 import com.example.model.Rarity
+import com.example.model.RarityOdds
 import com.example.model.RunState
+import com.example.model.rarityOddsForLevel
+import kotlin.random.Random
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -224,7 +227,8 @@ class GameViewModel(
         val state = _uiState.value
         val template = CardCatalog.getChampion(championId)
         val loadout = state.championLoadouts[championId] ?: return
-        if (!loadout.isUnlocked || targetStar != loadout.starLevel + 1) return
+        val expectedNext = template.nextStarPower(loadout.starLevel)?.starLevel ?: return
+        if (!loadout.isUnlocked || targetStar != expectedNext) return
 
         val spec = template.starPowers.find { it.starLevel == targetStar } ?: return
         val meta = state.legendProfile
@@ -342,6 +346,57 @@ class GameViewModel(
         _uiState.update { it.copy(bannerMessage = "Cosmic Forge upgraded Relic slots to Epic tier!") }
     }
 
+    fun grantUnlimitedTestResources() {
+        val state = _uiState.value
+        val allRelicIds = CardCatalog.relics.map { it.id }
+        val updatedMeta = state.legendProfile.copy(
+            legendLevel = maxOf(30, state.legendProfile.legendLevel),
+            wildFragments = 999_999,
+            starCrystals = 999_999,
+            novaCrystals = 999_999,
+            gemstones = 999_999,
+            ownedRelicIds = allRelicIds
+        )
+        val updatedLoadouts = CardCatalog.champions.map { champ ->
+            val current = state.championLoadouts[champ.id] ?: ChampionLoadout(champ.id)
+            current.copy(
+                isUnlocked = true,
+                fragments = 99_999,
+                unlockedRelicSlots = 3,
+                cosmicForgedSlots = 3
+            )
+        }
+        viewModelScope.launch {
+            repository.saveLegendProfile(updatedMeta)
+            updatedLoadouts.forEach { repository.saveChampionLoadout(it) }
+        }
+        _uiState.update {
+            it.copy(bannerMessage = "Test Mode: Granted 999,999 currencies, all Relics & unlocked Champions!")
+        }
+    }
+
+    fun maxChampionForTesting(championId: String) {
+        val state = _uiState.value
+        val template = CardCatalog.getChampion(championId)
+        val current = state.championLoadouts[championId] ?: return
+        val maxStar = template.starPowers.maxOfOrNull { it.starLevel } ?: 6
+        val updatedLoadout = current.copy(
+            isUnlocked = true,
+            championLevel = 30,
+            starLevel = maxStar,
+            fragments = maxOf(99_999, current.fragments),
+            unlockedConstellationNodes = template.constellationNodes.map { it.id },
+            unlockedRelicSlots = 3,
+            cosmicForgedSlots = 3
+        )
+        viewModelScope.launch {
+            repository.saveChampionLoadout(updatedLoadout)
+        }
+        _uiState.update {
+            it.copy(bannerMessage = "${template.name} maxed to Lv.30 • ${maxStar}★ Constellation!")
+        }
+    }
+
     // --- ADVENTURE & DAG MAP ---
 
     fun startAdventure(adventureId: String) {
@@ -357,8 +412,13 @@ class GameViewModel(
         // Apply permanent Champion Level deck items at level thresholds
         val initialDeck = champion.baseDeck.mapIndexed { idx, entry ->
             val bonusItems = mutableListOf<String>()
-            if (loadout.championLevel >= 2 && idx == 1) bonusItems.add("item_studded_leather")
-            if (loadout.championLevel >= 4 && idx == 0) bonusItems.add("item_farsight")
+            if (champId == "champ_anivia") {
+                if (loadout.championLevel >= 10 && idx == 1) bonusItems.add("item_studded_leather")
+                if (loadout.championLevel >= 20 && idx == 6) bonusItems.add("item_charging_sigil")
+            } else {
+                if (loadout.championLevel >= 2 && idx == 1) bonusItems.add("item_studded_leather")
+                if (loadout.championLevel >= 4 && idx == 0) bonusItems.add("item_farsight")
+            }
             entry.copy(attachedItemIds = entry.attachedItemIds + bonusItems)
         }
 
@@ -437,7 +497,8 @@ class GameViewModel(
                 scheduleAiTurnIfNeeded(combat)
             }
             NodeType.POWER_NODE -> {
-                val pool = rollPowerOptions(run.activePowerIds)
+                val champLevel = state.championLoadouts[run.championId]?.championLevel ?: 1
+                val pool = rollPowerOptions(run.activePowerIds, champLevel)
                 _uiState.update {
                     it.copy(
                         powerDraftOptions = pool,
@@ -447,15 +508,22 @@ class GameViewModel(
                 }
             }
             NodeType.SHOP_NODE -> {
-                val shopCards = rollCardOffers(3).map { offer ->
+                val champLevel = state.championLoadouts[run.championId]?.championLevel ?: 1
+                val shopCards = rollCardOffers(3, champLevel).map { offer ->
                     val cost = 75 + offer.card.cost * 15
                     ShopCardOffer(offer.card, offer.attachedItem, cost)
                 }
-                val shopItems = CardCatalog.items.shuffled().take(3).map { item ->
-                    ShopItemOffer(item, item.rarity.shopCostGold)
-                }
+                val shopItems = List(3) {
+                    val targetRarity = rollRarity(rarityOddsForLevel(champLevel))
+                    val candidates = CardCatalog.items.filter { it.rarity == targetRarity }.ifEmpty { CardCatalog.items }
+                    candidates.random()
+                }.distinctBy { it.id }.ifEmpty { CardCatalog.items.shuffled().take(3) }
+                    .let { base ->
+                        if (base.size < 3) (base + CardCatalog.items.shuffled()).distinctBy { it.id }.take(3) else base
+                    }
+                    .map { item -> ShopItemOffer(item, item.rarity.shopCostGold) }
                 val availablePowers = CardCatalog.powers.filterNot { run.activePowerIds.contains(it.id) }
-                val shopPower = availablePowers.randomOrNull()?.let { pow ->
+                val shopPower = pickPowerByOdds(availablePowers, champLevel)?.let { pow ->
                     ShopPowerOffer(pow, pow.rarity.shopCostGold + 75)
                 }
                 _uiState.update {
@@ -516,21 +584,55 @@ class GameViewModel(
 
     // --- DRAFT & ENCOUNTER ACTIONS ---
 
-    private fun rollCardOffers(count: Int = 3): List<CardRewardOffer> {
-        val pool = CardCatalog.collectibleRewardPool.shuffled().take(count)
-        return pool.map { card ->
+    private fun rollRarity(odds: RarityOdds): Rarity {
+        val roll = Random.nextDouble()
+        return when {
+            roll < odds.legendary -> Rarity.LEGENDARY
+            roll < odds.legendary + odds.epic -> Rarity.EPIC
+            roll < odds.legendary + odds.epic + odds.rare -> Rarity.RARE
+            else -> Rarity.COMMON
+        }
+    }
+
+    private fun pickPowerByOdds(pool: List<PowerTemplate>, championLevel: Int): PowerTemplate? {
+        if (pool.isEmpty()) return null
+        val rarity = rollRarity(rarityOddsForLevel(championLevel))
+        return pool.filter { it.rarity == rarity }.randomOrNull() ?: pool.random()
+    }
+
+    private fun rollCardOffers(count: Int = 3, championLevel: Int = 1): List<CardRewardOffer> {
+        val odds = rarityOddsForLevel(championLevel)
+        val pickedCards = mutableListOf<CardTemplate>()
+        val pool = CardCatalog.collectibleRewardPool
+        repeat(count) {
+            val targetRarity = rollRarity(odds)
+            val candidates = pool.filter { it.rarity == targetRarity && !pickedCards.contains(it) }
+                .ifEmpty { pool.filterNot { pickedCards.contains(it) } }
+                .ifEmpty { pool }
+            pickedCards.add(candidates.random())
+        }
+        return pickedCards.map { card ->
             val validItems = if (card.type == CardType.SPELL || card.type == CardType.LANDMARK) {
                 CardCatalog.items.filter { it.category == com.example.model.ItemCategory.ECONOMY || it.farsightGameStartDraw }
             } else {
                 CardCatalog.items
             }
-            CardRewardOffer(card, validItems.random())
+            val itemRarity = rollRarity(odds)
+            val chosenItem = validItems.filter { it.rarity == itemRarity }.randomOrNull() ?: validItems.random()
+            CardRewardOffer(card, chosenItem)
         }
     }
 
-    private fun rollPowerOptions(ownedPowerIds: List<String>): List<PowerTemplate> {
+    private fun rollPowerOptions(ownedPowerIds: List<String>, championLevel: Int = 1): List<PowerTemplate> {
         val remaining = CardCatalog.powers.filterNot { ownedPowerIds.contains(it.id) }
-        return (if (remaining.size >= 3) remaining else CardCatalog.powers).shuffled().take(3)
+        val pool = (if (remaining.size >= 3) remaining else CardCatalog.powers).toMutableList()
+        val picked = mutableListOf<PowerTemplate>()
+        repeat(minOf(3, pool.size)) {
+            val chosen = pickPowerByOdds(pool, championLevel) ?: pool.first()
+            picked.add(chosen)
+            pool.remove(chosen)
+        }
+        return picked
     }
 
     fun pickCardReward(offer: CardRewardOffer) {
@@ -541,7 +643,8 @@ class GameViewModel(
 
         val wasMidBoss = state.pendingPostCombatNode?.type == NodeType.MID_BOSS
         if (wasMidBoss) {
-            val powerOffers = rollPowerOptions(updatedRun.activePowerIds)
+            val champLevel = state.championLoadouts[run.championId]?.championLevel ?: 1
+            val powerOffers = rollPowerOptions(updatedRun.activePowerIds, champLevel)
             viewModelScope.launch { repository.saveActiveRun(updatedRun) }
             _uiState.update {
                 it.copy(
@@ -564,9 +667,10 @@ class GameViewModel(
         val run = state.activeRun ?: return
         val wasMidBoss = state.pendingPostCombatNode?.type == NodeType.MID_BOSS
         if (wasMidBoss) {
+            val champLevel = state.championLoadouts[run.championId]?.championLevel ?: 1
             _uiState.update {
                 it.copy(
-                    powerDraftOptions = rollPowerOptions(run.activePowerIds),
+                    powerDraftOptions = rollPowerOptions(run.activePowerIds, champLevel),
                     pendingPostCombatNode = null,
                     activeNodeIdInProgress = null,
                     screen = AppScreen.PowerDraft
@@ -579,14 +683,16 @@ class GameViewModel(
     }
 
     fun rerollCardDraft() {
-        val run = _uiState.value.activeRun ?: return
+        val state = _uiState.value
+        val run = state.activeRun ?: return
         if (run.rerollsRemaining <= 0) return
+        val champLevel = state.championLoadouts[run.championId]?.championLevel ?: 1
         val updated = run.copy(rerollsRemaining = run.rerollsRemaining - 1)
         viewModelScope.launch { repository.saveActiveRun(updated) }
         _uiState.update {
             it.copy(
                 activeRun = updated,
-                cardDraftOptions = rollCardOffers(3),
+                cardDraftOptions = rollCardOffers(3, champLevel),
                 bannerMessage = "Rerolled Card choices."
             )
         }
@@ -606,14 +712,16 @@ class GameViewModel(
     }
 
     fun rerollPowerDraft() {
-        val run = _uiState.value.activeRun ?: return
+        val state = _uiState.value
+        val run = state.activeRun ?: return
         if (run.rerollsRemaining <= 0) return
+        val champLevel = state.championLoadouts[run.championId]?.championLevel ?: 1
         val updated = run.copy(rerollsRemaining = run.rerollsRemaining - 1)
         viewModelScope.launch { repository.saveActiveRun(updated) }
         _uiState.update {
             it.copy(
                 activeRun = updated,
-                powerDraftOptions = rollPowerOptions(updated.activePowerIds),
+                powerDraftOptions = rollPowerOptions(updated.activePowerIds, champLevel),
                 bannerMessage = "Rerolled Power choices."
             )
         }
@@ -934,8 +1042,12 @@ class GameViewModel(
         if (combat.phase != CombatPhase.GAME_OVER || combat.playerWon != true) return
 
         val node = combat.encounterNode
+        val loadout = state.championLoadouts[run.championId]
+        val champLevel = loadout?.championLevel ?: 1
+        val victoryHeal = loadout?.victoryHeal ?: 2
+        val healedHp = maxOf(1, minOf(run.maxNexusHp, combat.playerNexusHp + victoryHeal))
         val updatedRun = run.copy(
-            currentNexusHp = maxOf(1, minOf(run.maxNexusHp, combat.playerNexusHp)),
+            currentNexusHp = healedHp,
             gold = run.gold + node.goldReward,
             battlesWon = run.battlesWon + 1,
             currentNodeId = node.id,
@@ -952,9 +1064,9 @@ class GameViewModel(
                     combatState = null,
                     activeNodeIdInProgress = null,
                     pendingPostCombatNode = node,
-                    cardDraftOptions = rollCardOffers(3),
+                    cardDraftOptions = rollCardOffers(3, champLevel),
                     screen = AppScreen.CardDraft,
-                    bannerMessage = "Victory! +${node.goldReward} Gold. Draft a Card."
+                    bannerMessage = "Victory! +${node.goldReward} Gold • +$victoryHeal HP. Draft a Card."
                 )
             }
         }

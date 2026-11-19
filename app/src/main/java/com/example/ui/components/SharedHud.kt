@@ -103,6 +103,7 @@ fun championPortraitRes(championId: String): Int? = when (championId) {
     "champ_jinx" -> R.drawable.img_champ_jinx
     "champ_lux" -> R.drawable.img_champ_lux
     "champ_yasuo" -> R.drawable.img_champ_yasuo
+    "champ_anivia" -> R.drawable.img_champ_anivia
     else -> null
 }
 

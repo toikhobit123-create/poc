@@ -77,6 +77,7 @@ fun ChampionDetailScreen(
     onUnlockConstellation: (String, String) -> Unit,
     onEquipRelic: (String, Int, String?) -> Unit,
     onCosmicForge: (String) -> Unit,
+    onMaxChampionForTesting: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -131,6 +132,14 @@ fun ChampionDetailScreen(
                         color = ArcaneCyan
                     )
                 }
+                OutlinedButton(
+                    onClick = { onMaxChampionForTesting(championId) },
+                    modifier = Modifier.testTag("max_champ_test_button"),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    border = BorderStroke(1.dp, EmeraldHeal)
+                ) {
+                    Text("Max Lv.30 • 6★", style = MaterialTheme.typography.labelMedium, color = EmeraldHeal)
+                }
             }
 
             MetaCurrencyBar(
@@ -168,15 +177,42 @@ fun ChampionDetailScreen(
                 when (selectedTab) {
                     0 -> {
                         item {
+                            val odds = loadout.rarityOdds
+                            val pct = { v: Double -> String.format(java.util.Locale.US, "%.1f%%", v * 100.0) }
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = ObsidianSurface,
+                                border = BorderStroke(1.dp, SlateBorder)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "Lv.${loadout.championLevel} Run Baseline: ${loadout.maxNexusHp} HP • Heal +${loadout.victoryHeal}/Win • ${loadout.startingGold}g • ${loadout.startingRerolls} Rerolls",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = ParchmentWhite
+                                    )
+                                    Text(
+                                        text = "Reward/Shop Odds: Common ${pct(odds.common)} | Rare ${pct(odds.rare)} | Epic ${pct(odds.epic)} | Legendary ${pct(odds.legendary)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = ArcaneCyan
+                                    )
+                                }
+                            }
+                        }
+                        item {
                             Text(
-                                text = "Star Powers (0★–6★)",
+                                text = "Star Powers (Constellation)",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = HextechGoldBright
                             )
                         }
                         items(champion.starPowers, key = { it.starLevel }) { spec ->
                             val unlocked = loadout.starLevel >= spec.starLevel
-                            val isNext = loadout.isUnlocked && loadout.starLevel + 1 == spec.starLevel
+                            val nextStarSpec = champion.nextStarPower(loadout.starLevel)
+                            val isNext = loadout.isUnlocked && nextStarSpec?.starLevel == spec.starLevel
 
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),

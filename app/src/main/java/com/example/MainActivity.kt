@@ -87,7 +87,8 @@ fun PathOfChampionsApp(viewModel: GameViewModel) {
                         onOpenChampionDetail = viewModel::openChampionDetail,
                         onOpenAdventures = viewModel::openAdventureSelect,
                         onResumeRun = viewModel::resumeSavedRun,
-                        onAbandonRun = viewModel::abandonSavedRun
+                        onAbandonRun = viewModel::abandonSavedRun,
+                        onGrantUnlimitedTestResources = viewModel::grantUnlimitedTestResources
                     )
                 }
 
@@ -99,6 +100,7 @@ fun PathOfChampionsApp(viewModel: GameViewModel) {
                         onUnlockConstellation = viewModel::unlockConstellationNode,
                         onEquipRelic = viewModel::equipRelic,
                         onCosmicForge = viewModel::cosmicForgeSlot,
+                        onMaxChampionForTesting = viewModel::maxChampionForTesting,
                         onBack = viewModel::navigateHome
                     )
                 }

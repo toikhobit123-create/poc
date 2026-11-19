@@ -159,8 +159,7 @@ object CombatEngine {
 
         // Power: Perfected Manaflow
         if (!isGameStart && s.activePowers.any { it.id == "pow_manaflow" }) {
-            val newMax = minOf(10, s.playerMaxMana + 1)
-            s = s.copy(playerMaxMana = newMax, playerMana = newMax)
+            s = gainPlayerManaGem(s, empty = false, logs, "Perfected Manaflow")
         }
 
         // Champion Star Powers
@@ -240,6 +239,35 @@ object CombatEngine {
                     logs.add("Ashe 3★ granted ${topAlly.template.name} +2|+2!")
                 }
             }
+            "champ_anivia" -> {
+                if (isGameStart && s.starLevel >= 2) {
+                    logs.add("Anivia 2★ Glacial Overflow active (+1 Starting Mana).")
+                }
+            }
+        }
+
+        // Eggnivia revival at Round Start when Enlightened (10 Max Mana)
+        if (!isGameStart && s.playerMaxMana >= 10 && s.playerBoard.any { it.template.id == "card_eggnivia" }) {
+            val aniviaTmpl = CardCatalog.getCard("card_anivia")
+            s = s.copy(
+                playerBoard = s.playerBoard.map { u ->
+                    if (u.template.id == "card_eggnivia") {
+                        val bonusPow = aniviaTmpl.levelUpPowerBonus + s.equippedRelics.sumOf { it.bonusPower }
+                        val bonusHp = aniviaTmpl.levelUpHealthBonus + s.equippedRelics.sumOf { it.bonusHealth }
+                        val newPow = aniviaTmpl.basePower + bonusPow
+                        val newHp = aniviaTmpl.baseHealth + bonusHp
+                        u.copy(
+                            template = aniviaTmpl,
+                            power = newPow,
+                            health = newHp,
+                            maxHealth = newHp,
+                            keywords = aniviaTmpl.keywords + s.equippedRelics.mapNotNull { it.grantedKeyword },
+                            isLeveledUp = true
+                        )
+                    } else u
+                }
+            )
+            logs.add("Eggnivia hatched into Leveled Anivia!")
         }
 
         // Leveled Garen works even when playing another champion via Reinforcement
@@ -273,6 +301,7 @@ object CombatEngine {
                 "champ_lux" -> "card_prismatic_barrier"
                 "champ_yasuo" -> "card_steel_tempest"
                 "champ_garen" -> "card_single_combat"
+                "champ_anivia" -> "card_harsh_winds"
                 else -> "card_flash_freeze"
             }
             s = s.copy(playerHand = s.playerHand + createHandInstance(CardCatalog.getCard(spellId), isFleeting = true))
@@ -362,8 +391,10 @@ object CombatEngine {
             combatLog = logs.takeLast(16)
         )
         repeat(extraDraws) { s = drawPlayerCard(s) }
+        s = applyEnlightenedBoardBuffs(s, logs)
+        s = checkChampionLevelUps(s, logs)
 
-        return checkGameOver(s)
+        return checkGameOver(s.copy(combatLog = logs.takeLast(16)))
     }
 
     private fun createHandInstance(
@@ -467,7 +498,25 @@ object CombatEngine {
 
         when (card.template.type) {
             CardType.UNIT, CardType.CHAMPION, CardType.LANDMARK -> {
+                val prevSize = s.playerBoard.size
                 s = summonPlayerUnit(s, card, logs)
+                val summonedStormbirdId = if (card.template.id == "card_crystal_stormbird" && s.playerBoard.size > prevSize) {
+                    s.playerBoard.lastOrNull { it.template.id == "card_crystal_stormbird" }?.instanceId
+                } else null
+
+                if (summonedStormbirdId != null) {
+                    s = onPlayerSkillOrElementalPlayed(s, logs, "Crystal Stormbird")
+                    val skillDmg = 2 + s.equippedRelics.sumOf { it.spellSkillDamageBonus }
+                    s.enemyBoard.toList().forEach { enemy ->
+                        s = damageUnit(s, enemy.instanceId, isEnemy = true, damage = skillDmg, isSpell = true, fromAllyEffect = true, logs = logs)
+                    }
+                    s.playerBoard.toList().forEach { ally ->
+                        if (ally.instanceId != summonedStormbirdId) {
+                            s = damageUnit(s, ally.instanceId, isEnemy = false, damage = skillDmg, isSpell = true, fromAllyEffect = true, logs = logs)
+                        }
+                    }
+                    logs.add("Crystal Stormbird's Skill dealt $skillDmg damage to ALL other units!")
+                }
                 if (card.template.effectType == CardEffectType.FROSTBITE_TARGET && s.enemyBoard.isNotEmpty()) {
                     val target = s.enemyBoard.maxByOrNull { it.effectivePower }!!
                     s = s.copy(
@@ -511,6 +560,10 @@ object CombatEngine {
                     playerSpellsManaSpent = s.playerSpellsManaSpent + cost,
                     playerSpellsPlayedThisRound = s.playerSpellsPlayedThisRound + 1
                 )
+
+                if (card.template.keywords.contains(Keyword.ELEMENTAL)) {
+                    s = onPlayerSkillOrElementalPlayed(s, logs, card.template.name)
+                }
 
                 // Lux Star Power 1★: Spell grants strongest ally +1|+1
                 if (s.championId == "champ_lux" && s.starLevel >= 1 && s.playerBoard.isNotEmpty()) {
@@ -644,6 +697,14 @@ object CombatEngine {
             power += 2; health += 2
         }
 
+        var enlightenedApplied = false
+        if (tmpl.id == "card_wild_mystics" && s.playerMaxMana >= 10) {
+            power += 4
+            health += 4
+            enlightenedApplied = true
+            logs.add("Wild Mystics (Enlightened) summoned as 6|6!")
+        }
+
         // Power: Evolution (+1|+1 per positive keyword)
         if (s.activePowers.any { it.id == "pow_evolution" }) {
             val kwCount = keywords.count { it.isSharablePositive }
@@ -664,7 +725,8 @@ object CombatEngine {
             hasSpellShield = keywords.contains(Keyword.SPELLSHIELD),
             hasDeathless = keywords.contains(Keyword.DEATHLESS),
             attachedItems = card.attachedItems,
-            countdownRemaining = tmpl.countdownRounds
+            countdownRemaining = tmpl.countdownRounds,
+            hasEnlightenedBonusApplied = enlightenedApplied
         )
 
         // Attune
@@ -930,6 +992,74 @@ object CombatEngine {
                     logs.add("Foe planted ${card.effectValue} Poison Puffcaps into your deck!")
                 }
             }
+            CardEffectType.FROSTBITE_TWO -> {
+                if (sourceIsPlayer && s.enemyBoard.isNotEmpty()) {
+                    val targets = s.enemyBoard
+                        .sortedWith(compareBy<UnitOnBoard> { it.isFrostbitten }.thenByDescending { it.effectivePower })
+                        .take(2)
+                    val targetIds = targets.map { it.instanceId }.toSet()
+                    val newlyFrostbitten = targets.count { !it.isFrostbitten }
+                    s = s.copy(
+                        enemyBoard = s.enemyBoard.map {
+                            if (targetIds.contains(it.instanceId)) it.copy(isFrostbitten = true) else it
+                        },
+                        enemiesFrostbittenCount = s.enemiesFrostbittenCount + newlyFrostbitten
+                    )
+                    logs.add("${card.name} Frostbit ${targets.joinToString(", ") { it.template.name }}.")
+                } else if (!sourceIsPlayer && s.playerBoard.isNotEmpty()) {
+                    val targets = s.playerBoard
+                        .sortedWith(compareBy<UnitOnBoard> { it.isFrostbitten }.thenByDescending { it.effectivePower })
+                        .take(2)
+                    val targetIds = targets.map { it.instanceId }.toSet()
+                    s = s.copy(playerBoard = s.playerBoard.map {
+                        if (targetIds.contains(it.instanceId)) it.copy(isFrostbitten = true) else it
+                    })
+                    logs.add("Foe's ${card.name} Frostbit ${targets.size} unit(s).")
+                }
+            }
+            CardEffectType.WINGS_OF_CRYOPHOENIX -> {
+                if (sourceIsPlayer) {
+                    s.enemyBoard.toList().forEach { enemy ->
+                        s = damageUnit(s, enemy.instanceId, isEnemy = true, damage = dmg, isSpell = true, fromAllyEffect = true, logs = logs)
+                    }
+                    if (s.playerMaxMana >= 10) {
+                        val healed = minOf(s.playerMaxHp, s.playerNexusHp + 3)
+                        s = s.copy(playerNexusHp = healed)
+                        logs.add("Wings of the Cryophoenix (Enlightened): Dealt $dmg to all enemies & healed Nexus +3!")
+                    } else {
+                        s.playerBoard.toList().forEach { ally ->
+                            s = damageUnit(s, ally.instanceId, isEnemy = false, damage = dmg, isSpell = true, fromAllyEffect = true, logs = logs)
+                        }
+                        logs.add("Wings of the Cryophoenix dealt $dmg to ALL units.")
+                    }
+                } else {
+                    s.playerBoard.toList().forEach { ally ->
+                        s = damageUnit(s, ally.instanceId, isEnemy = false, damage = dmg, isSpell = true, logs = logs)
+                    }
+                    s.enemyBoard.toList().forEach { enemy ->
+                        s = damageUnit(s, enemy.instanceId, isEnemy = true, damage = dmg, isSpell = true, fromAllyEffect = true, logs = logs)
+                    }
+                }
+            }
+            CardEffectType.SUMMON_TWO_GIANTS -> {
+                val count = maxOf(1, card.effectValue)
+                if (sourceIsPlayer) {
+                    repeat(count) {
+                        if (s.playerBoard.size < 6) {
+                            val giant = CardCatalog.giantFollowersPool.random()
+                            s = summonPlayerUnit(s, createHandInstance(giant), logs)
+                        }
+                    }
+                    logs.add("Clash of Giants summoned Titanic Freljord allies!")
+                } else {
+                    repeat(count) {
+                        if (s.enemyBoard.size < 6) {
+                            val giant = CardCatalog.giantFollowersPool.random()
+                            s = summonEnemyUnitFromPool(s, giant, spendMana = 0, logs = logs)
+                        }
+                    }
+                }
+            }
             CardEffectType.PURGE_SUPPRESSION_CURSE, CardEffectType.PURGE_SHACKLES_CURSE, CardEffectType.PURGE_TERROR_CURSE -> {
                 logs.add("Purged ${card.name} Curse from hand.")
             }
@@ -1001,7 +1131,8 @@ object CombatEngine {
             logs.add("Hallowed granted ${attackers.first().template.name} +${s.playerHallowedStacks}|+0!")
         }
 
-        // Guinsoo's Rageblade & Ashe Attack trigger
+        // Guinsoo's Rageblade, Ashe & Anivia Attack triggers
+        val skillDmgBonus = s.equippedRelics.sumOf { it.spellSkillDamageBonus }
         attackers.forEach { atk ->
             if (atk.template.isChampion && s.equippedRelics.any { it.id == "relic_guinsoos_rageblade" }) {
                 s = s.copy(playerBoard = s.playerBoard.map {
@@ -1017,6 +1148,16 @@ object CombatEngine {
                     enemiesFrostbittenCount = s.enemiesFrostbittenCount + 1
                 )
                 logs.add("Ashe Attack: Frostbit ${target.template.name}.")
+            }
+            if (atk.template.id == "card_anivia") {
+                s = onPlayerSkillOrElementalPlayed(s, logs, "Glacial Storm")
+                val stormDmg = (if (atk.isLeveledUp) 2 else 1) + skillDmgBonus
+                s.enemyBoard.toList().forEach { enemy ->
+                    s = damageUnit(s, enemy.instanceId, isEnemy = true, damage = stormDmg, isSpell = true, fromAllyEffect = true, logs = logs)
+                }
+                s = dealDamageToEnemyNexus(s, stormDmg, logs)
+                logs.add("Glacial Storm dealt $stormDmg damage to all enemies & Enemy Nexus!")
+                if (s.playerWon != null) return checkGameOver(s.copy(combatLog = logs.takeLast(16)))
             }
         }
 
@@ -1238,10 +1379,16 @@ object CombatEngine {
         isEnemy: Boolean,
         damage: Int,
         isSpell: Boolean = false,
+        fromAllyEffect: Boolean = false,
         logs: MutableList<String>
     ): CombatState {
         val board = if (isEnemy) state.enemyBoard else state.playerBoard
         val target = board.find { it.instanceId == unitId } ?: return state
+
+        if (!isEnemy && target.template.id == "card_guardian_follower" && fromAllyEffect) {
+            logs.add("${target.template.name} took 0 damage from allied spell/skill.")
+            return state
+        }
 
         if (isSpell && target.hasSpellShield) {
             val updated = board.map {
@@ -1259,20 +1406,42 @@ object CombatEngine {
             return if (isEnemy) state.copy(enemyBoard = updated) else state.copy(playerBoard = updated)
         }
 
-        val actualDmg = if (target.keywords.contains(Keyword.TOUGH)) maxOf(0, damage - 1) else damage
+        val afterTough = if (target.keywords.contains(Keyword.TOUGH)) maxOf(0, damage - 1) else damage
+        val crystallizeMult = if (isEnemy && target.effectivePower == 0 && state.championId == "champ_anivia" && state.starLevel >= 6) 2 else 1
+        val actualDmg = afterTough * crystallizeMult
         val newHp = target.health - actualDmg
 
         if (newHp <= 0) {
             return removeUnit(state, unitId, isEnemy, logs)
         } else {
             var newPow = target.power
+            var updatedMaxHp = target.maxHealth
+            var finalHp = newHp
+
             if (isEnemy && state.activePowers.any { it.id == "pow_enfeebling_strike" }) {
                 newPow = maxOf(0, newPow - actualDmg)
             }
-            val updated = board.map {
-                if (it.instanceId == unitId) it.copy(health = newHp, power = newPow) else it
+            if (!isEnemy && actualDmg > 0 && state.championId == "champ_anivia" && state.starLevel >= 4) {
+                newPow += 1
+                finalHp += 1
+                updatedMaxHp += 1
+                logs.add("Endurance (4★): ${target.template.name} survived damage and gained +1|+1!")
             }
-            return if (isEnemy) state.copy(enemyBoard = updated) else state.copy(playerBoard = updated)
+
+            val updated = board.map {
+                if (it.instanceId == unitId) it.copy(health = finalHp, maxHealth = updatedMaxHp, power = newPow) else it
+            }
+            var s = if (isEnemy) state.copy(enemyBoard = updated) else state.copy(playerBoard = updated)
+
+            if (actualDmg > 0 && target.template.id == "card_mortal_prophet") {
+                if (!isEnemy) {
+                    s = dealDamageToEnemyNexus(s, 1, logs)
+                    logs.add("Mortal Prophet survived damage: Dealt 1 to Enemy Nexus!")
+                } else {
+                    s = dealDamageToPlayerNexus(s, 1, logs)
+                }
+            }
+            return s
         }
     }
 
@@ -1297,6 +1466,23 @@ object CombatEngine {
             val updated = board.map { if (it.instanceId == unitId) revived else it }
             logs.add("${target.template.name} revived via Deathless (1 HP, Stunned)!")
             return if (isEnemy) s.copy(enemyBoard = updated) else s.copy(playerBoard = updated)
+        }
+
+        // Anivia Last Breath: Transform into Eggnivia (0|2)
+        if (!isEnemy && target.template.id == "card_anivia") {
+            val eggTmpl = CardCatalog.getCard("card_eggnivia")
+            val egg = UnitOnBoard(
+                instanceId = target.instanceId,
+                template = eggTmpl,
+                ownerIsPlayer = true,
+                power = eggTmpl.basePower,
+                health = eggTmpl.baseHealth,
+                maxHealth = eggTmpl.baseHealth,
+                keywords = eggTmpl.keywords,
+                attachedItems = target.attachedItems
+            )
+            logs.add("Anivia's Last Breath: Revived as Eggnivia (0|2)!")
+            return s.copy(playerBoard = s.playerBoard.map { if (it.instanceId == unitId) egg else it })
         }
 
         val updated = board.filterNot { it.instanceId == unitId }
@@ -1530,6 +1716,7 @@ object CombatEngine {
                     "card_yasuo" -> s.enemiesStunnedCount >= 3 || s.round >= 3
                     "card_ashe" -> s.enemiesFrostbittenCount >= 3 || s.round >= 3
                     "card_garen" -> s.round >= 3
+                    "card_anivia" -> s.playerMaxMana >= 10
                     else -> s.round >= 3
                 }
                 if (shouldLevel) {
@@ -1578,6 +1765,81 @@ object CombatEngine {
             }
         }
         return s
+    }
+
+    internal fun onPlayerSkillOrElementalPlayed(
+        state: CombatState,
+        logs: MutableList<String>,
+        sourceName: String
+    ): CombatState {
+        var s = state.copy(playerElementalAndSkillsPlayed = state.playerElementalAndSkillsPlayed + 1)
+
+        // Flame-Eyed Caprine: When you play a Skill or Elemental spell, Forge me (+1|+1)
+        if (s.playerBoard.any { it.template.id == "card_flame_eyed_caprine" }) {
+            s = s.copy(
+                playerBoard = s.playerBoard.map { u ->
+                    if (u.template.id == "card_flame_eyed_caprine") {
+                        u.copy(power = u.power + 1, health = u.health + 1, maxHealth = u.maxHealth + 1)
+                    } else u
+                }
+            )
+            logs.add("Flame-Eyed Caprine Forged (+1|+1) from $sourceName!")
+        }
+
+        // Anivia 3★ Winter's Boon II: Gain +1 empty Mana gem permanently
+        if (s.championId == "champ_anivia" && s.starLevel >= 3) {
+            s = gainPlayerManaGem(s, empty = true, logs, "Winter's Boon II")
+        }
+        return s
+    }
+
+    internal fun gainPlayerManaGem(
+        state: CombatState,
+        empty: Boolean,
+        logs: MutableList<String>,
+        sourceLabel: String = "Mana Ramp"
+    ): CombatState {
+        var s = state
+        if (s.playerMaxMana >= 10) {
+            // Anivia 2★ Glacial Overflow: When Enlightened, grant all allies +1|+1 instead
+            if (s.championId == "champ_anivia" && s.starLevel >= 2 && s.playerBoard.isNotEmpty()) {
+                s = s.copy(
+                    playerBoard = s.playerBoard.map {
+                        it.copy(power = it.power + 1, health = it.health + 1, maxHealth = it.maxHealth + 1)
+                    }
+                )
+                logs.add("Glacial Overflow (Enlightened): All allies gained +1|+1!")
+            }
+            return s
+        }
+        val newMax = minOf(10, s.playerMaxMana + 1)
+        val newCurrent = if (empty) s.playerMana else minOf(10, s.playerMana + 1)
+        s = s.copy(playerMaxMana = newMax, playerMana = newCurrent)
+        logs.add("$sourceLabel: Gained +1${if (empty) " empty" else ""} Mana gem (Max: $newMax).")
+        if (newMax >= 10) {
+            logs.add("ENLIGHTENED reached (10 Max Mana)!")
+            s = applyEnlightenedBoardBuffs(s, logs)
+            s = checkChampionLevelUps(s, logs)
+        }
+        return s
+    }
+
+    private fun applyEnlightenedBoardBuffs(state: CombatState, logs: MutableList<String>): CombatState {
+        if (state.playerMaxMana < 10) return state
+        var changed = false
+        val updated = state.playerBoard.map { u ->
+            if (u.template.id == "card_wild_mystics" && !u.hasEnlightenedBonusApplied) {
+                changed = true
+                logs.add("Wild Mystics reached Enlightened (+4|+4)!")
+                u.copy(
+                    power = u.power + 4,
+                    health = u.health + 4,
+                    maxHealth = u.maxHealth + 4,
+                    hasEnlightenedBonusApplied = true
+                )
+            } else u
+        }
+        return if (changed) state.copy(playerBoard = updated) else state
     }
 
     internal fun checkGameOver(state: CombatState): CombatState {

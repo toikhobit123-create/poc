@@ -96,6 +96,7 @@ data class CombatState(
     val enemiesFrostbittenCount: Int = 0,
     val enemySuppressionCount: Int = 0,
     val enemyTerrorCount: Int = 0,
+    val playerElementalAndSkillsPlayed: Int = 0,
 
     val playerWon: Boolean? = null,
     val combatLog: List<String> = emptyList()
@@ -154,6 +155,9 @@ data class CombatState(
         }
         if (isSpell && playerHand.any { it.template.id == "card_curse_suppression" }) {
             cost += 1
+        }
+        if (card.template.id == "card_clash_of_giants") {
+            cost -= minOf(10, playerElementalAndSkillsPlayed)
         }
         return maxOf(0, cost)
     }

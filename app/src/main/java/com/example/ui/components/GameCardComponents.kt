@@ -346,6 +346,11 @@ fun cardPortraitRes(cardId: String): Int? = when (cardId) {
     "card_jinx", "card_super_mega_rocket" -> R.drawable.img_champ_jinx
     "card_lux", "card_final_spark" -> R.drawable.img_champ_lux
     "card_yasuo", "card_steel_tempest" -> R.drawable.img_champ_yasuo
+    "card_anivia", "card_wings_of_cryophoenix" -> R.drawable.img_champ_anivia
+    "card_eggnivia" -> R.drawable.img_anivia_egg
+    "card_wild_mystics", "card_mortal_prophet", "card_guardian_follower" -> R.drawable.img_wild_mystics
+    "card_crystal_stormbird", "card_harsh_winds", "card_flame_eyed_caprine" -> R.drawable.img_crystal_stormbird
+    "card_clash_of_giants", "card_freljord_titan", "card_glacial_colossus", "card_ancient_yeti" -> R.drawable.img_clash_of_giants
     else -> null
 }
 

@@ -257,7 +257,14 @@ object CardCatalog {
             cost = 4, basePower = 5, baseHealth = 3, keywords = setOf(Keyword.BRASH),
             isChampion = true, levelUpRequirementText = "Frostbite 3+ enemies",
             description = "Brash. Attack: Frostbite the strongest enemy. Enemies with 0 Power can't block.",
-            levelUpPowerBonus = 1, levelUpHealthBonus = 1
+            levelUpPowerBonus = 1, levelUpHealthBonus = 1, rarity = Rarity.LEGENDARY
+        ),
+        CardTemplate(
+            id = "card_anivia", name = "Anivia", region = Region.FRELJORD, type = CardType.CHAMPION,
+            cost = 6, basePower = 3, baseHealth = 5, keywords = setOf(Keyword.ELEMENTAL),
+            isChampion = true, levelUpRequirementText = "Enlightened (10 Max Mana)",
+            description = "Elemental. Attack: Glacial Storm deals 1 (2 Leveled) to all enemies & enemy Nexus. Last Breath: Revive as Eggnivia.",
+            levelUpPowerBonus = 1, levelUpHealthBonus = 1, rarity = Rarity.LEGENDARY
         ),
         // AI Boss Champions & Reinforcement Champions
         CardTemplate(
@@ -378,6 +385,55 @@ object CardCatalog {
             cost = 2, basePower = 3, baseHealth = 1, keywords = setOf(Keyword.OVERWHELM, Keyword.TOUGH),
             description = "Overwhelm, Tough."
         ),
+        // Anivia Deck Followers & Freljord Giants
+        CardTemplate(
+            id = "card_wild_mystics", name = "Wild Mystics", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 2, basePower = 2, baseHealth = 2, keywords = setOf(Keyword.OVERWHELM),
+            description = "Overwhelm. Enlightened: Gain +4|+4.",
+            rarity = Rarity.COMMON
+        ),
+        CardTemplate(
+            id = "card_mortal_prophet", name = "Mortal Prophet", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 2, basePower = 0, baseHealth = 5, keywords = emptySet(),
+            description = "When I survive damage, deal 1 to the enemy Nexus.",
+            rarity = Rarity.COMMON
+        ),
+        CardTemplate(
+            id = "card_guardian_follower", name = "Guardian Follower", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 3, basePower = 3, baseHealth = 4, keywords = emptySet(),
+            description = "I take no damage from allied spells or skills.",
+            rarity = Rarity.RARE
+        ),
+        CardTemplate(
+            id = "card_flame_eyed_caprine", name = "Flame-Eyed Caprine", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 4, basePower = 3, baseHealth = 2, keywords = setOf(Keyword.TOUGH),
+            description = "Tough. When you play a Skill or Elemental spell, Forge me (+1|+1).",
+            rarity = Rarity.RARE
+        ),
+        CardTemplate(
+            id = "card_crystal_stormbird", name = "Crystal Stormbird", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 5, basePower = 3, baseHealth = 2, keywords = setOf(Keyword.ELEMENTAL),
+            description = "Elemental. Play (Skill): Deal 2 damage to ALL other units.",
+            rarity = Rarity.RARE
+        ),
+        CardTemplate(
+            id = "card_freljord_titan", name = "She Who Wanders", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 9, basePower = 8, baseHealth = 8, keywords = setOf(Keyword.OVERWHELM, Keyword.TOUGH),
+            description = "Overwhelm, Tough. Colossal Freljord Titan.",
+            rarity = Rarity.EPIC
+        ),
+        CardTemplate(
+            id = "card_glacial_colossus", name = "Frostheart Behemoth", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 7, basePower = 6, baseHealth = 7, keywords = setOf(Keyword.OVERWHELM),
+            description = "Overwhelm. Massive glacier giant.",
+            rarity = Rarity.RARE
+        ),
+        CardTemplate(
+            id = "card_ancient_yeti", name = "Ancient Yeti", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 7, basePower = 5, baseHealth = 6, keywords = setOf(Keyword.OVERWHELM, Keyword.REGENERATION),
+            description = "Overwhelm, Regeneration.",
+            rarity = Rarity.RARE
+        ),
 
         // Spells (Burst, Focus, Fast, Slow)
         CardTemplate(
@@ -460,6 +516,27 @@ object CardCatalog {
             description = "Burst. Plant 5 Poison Puffcap Traps into the enemy deck.",
             effectType = CardEffectType.PLANT_PUFFCAPS, effectValue = 5
         ),
+        CardTemplate(
+            id = "card_harsh_winds", name = "Harsh Winds", region = Region.FRELJORD, type = CardType.SPELL,
+            cost = 5, spellSpeed = SpellSpeed.BURST, keywords = setOf(Keyword.ELEMENTAL),
+            description = "Burst, Elemental. Frostbite 2 enemies.",
+            effectType = CardEffectType.FROSTBITE_TWO, effectValue = 2,
+            rarity = Rarity.RARE
+        ),
+        CardTemplate(
+            id = "card_wings_of_cryophoenix", name = "Wings of the Cryophoenix", region = Region.FRELJORD, type = CardType.SPELL,
+            cost = 7, spellSpeed = SpellSpeed.SLOW, keywords = setOf(Keyword.ELEMENTAL),
+            description = "Slow, Elemental. Deal 3 to ALL units. Enlightened: Instead deal 3 to all enemies and heal your Nexus 3.",
+            effectType = CardEffectType.WINGS_OF_CRYOPHOENIX, effectValue = 3,
+            rarity = Rarity.EPIC
+        ),
+        CardTemplate(
+            id = "card_clash_of_giants", name = "Clash of Giants", region = Region.FRELJORD, type = CardType.SPELL,
+            cost = 16, spellSpeed = SpellSpeed.SLOW, keywords = setOf(Keyword.ELEMENTAL),
+            description = "Slow, Elemental. Costs 1 less per Skill or Elemental spell played (max -10). Summon 2 random Giants.",
+            effectType = CardEffectType.SUMMON_TWO_GIANTS, effectValue = 2,
+            rarity = Rarity.EPIC
+        ),
 
         // Equipment & Landmark
         CardTemplate(
@@ -507,6 +584,12 @@ object CardCatalog {
             cost = 3, basePower = 3, baseHealth = 2, keywords = setOf(Keyword.ATTUNE),
             description = "Attune. Summoned by Concussive Palm.",
             isCollectibleReward = false
+        ),
+        CardTemplate(
+            id = "card_eggnivia", name = "Eggnivia", region = Region.FRELJORD, type = CardType.UNIT,
+            cost = 1, basePower = 0, baseHealth = 2, keywords = emptySet(),
+            description = "Round Start: If Enlightened, transform back into Anivia and Level Up.",
+            isCollectibleReward = false
         )
     ).associateBy { it.id }
 
@@ -514,6 +597,10 @@ object CardCatalog {
     fun getItem(id: String): ItemTemplate = items.find { it.id == id } ?: items.first()
     fun getPower(id: String): PowerTemplate = powers.find { it.id == id } ?: powers.first()
     fun getRelic(id: String): RelicTemplate = relics.find { it.id == id } ?: relics.first()
+
+    val giantFollowersPool: List<CardTemplate> by lazy {
+        listOf("card_freljord_titan", "card_glacial_colossus", "card_ancient_yeti").map { getCard(it) }
+    }
 
     val collectibleRewardPool: List<CardTemplate> by lazy {
         cards.values.filter { it.isCollectibleReward && !it.isChampion }
@@ -677,6 +764,38 @@ object CardCatalog {
                 ConstellationMinorNode("ashe_reroll", "Freljord Scout", "+1 Reroll Token", 15, gemstoneCost = 5, bonusRerolls = 1),
                 ConstellationMinorNode("ashe_gold", "Hearthbound Cache", "+50 Starting Gold", 15, gemstoneCost = 10, bonusStartingGold = 50)
             )
+        ),
+        ChampionTemplate(
+            id = "champ_anivia",
+            name = "Anivia",
+            title = "The Cryophoenix",
+            region = Region.FRELJORD,
+            cardId = "card_anivia",
+            archetypeSummary = "Control • Mana Ramp & Elemental AoE (Enlightened)",
+            unlockFragmentCost = 0,
+            baseDeck = listOf(
+                DeckCardEntry("card_anivia", 2),
+                DeckCardEntry("card_wild_mystics", 2),
+                DeckCardEntry("card_mortal_prophet", 2),
+                DeckCardEntry("card_guardian_follower", 2),
+                DeckCardEntry("card_flame_eyed_caprine", 2),
+                DeckCardEntry("card_crystal_stormbird", 2),
+                DeckCardEntry("card_harsh_winds", 2),
+                DeckCardEntry("card_wings_of_cryophoenix", 2),
+                DeckCardEntry("card_clash_of_giants", 2)
+            ),
+            starPowers = listOf(
+                StarPowerSpec(2, "Glacial Overflow", "+1 Starting Mana. If Enlightened, whenever you gain a Mana gem, grant all allies +1|+1 instead.", 20, starCrystalCost = 2),
+                StarPowerSpec(3, "Winter's Boon II", "Whenever you play an Elemental spell or Skill, gain +1 empty Mana gem permanently.", 40, starCrystalCost = 5),
+                StarPowerSpec(4, "Endurance", "Whenever an ally survives damage, grant it +1|+1.", 40, starCrystalCost = 5),
+                StarPowerSpec(5, "Manaflow", "Game Start: Gain +1 Starting Mana gem.", 50, starCrystalCost = 10),
+                StarPowerSpec(6, "Crystallize", "When enemies attack, Frostbite the strongest attacker. Enemies with 0 Power take double damage.", 100, novaCrystalCost = 1)
+            ),
+            constellationNodes = listOf(
+                ConstellationMinorNode("anivia_hp", "True Ice Heart", "+5 Max Nexus HP", 10, gemstoneCost = 5, bonusMaxHp = 5),
+                ConstellationMinorNode("anivia_reroll", "Freljord Tempest Sight", "+1 Reroll Token", 15, gemstoneCost = 5, bonusRerolls = 1),
+                ConstellationMinorNode("anivia_gold", "Glacial Vault", "+50 Starting Gold", 15, gemstoneCost = 10, bonusStartingGold = 50)
+            )
         )
     )
 
@@ -715,6 +834,11 @@ object CardCatalog {
             "reinf_ashe", "card_ashe", "Ashe — Frozen Arrow",
             "Frostbite control & Overwhelm finishers",
             listOf("card_ashe", "card_icevale_archer", "card_flash_freeze")
+        ),
+        ReinforcementPackage(
+            "reinf_anivia", "card_anivia", "Anivia — Cryophoenix",
+            "Elemental AoE, Mana Ramp & Enlightened Giants",
+            listOf("card_anivia", "card_crystal_stormbird", "card_harsh_winds")
         )
     )
 }

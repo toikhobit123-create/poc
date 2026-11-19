@@ -824,4 +824,226 @@ class ExampleUnitTest {
         assertTrue(state.enemyGraveyard.any { it.id == "card_cithria" })
         assertEquals(1, state.playerBoard.count { it.instanceId == "p_strong" })
     }
+
+    @Test
+    fun `anivia lv30 baseline stats starter deck and unlimited test resources match spec`() = runTest {
+        val anivia = CardCatalog.getChampion("champ_anivia")
+        assertEquals(9, anivia.baseDeck.size)
+        assertEquals(18, anivia.baseDeck.sumOf { it.copies })
+        assertEquals(listOf(2, 3, 4, 5, 6), anivia.starPowers.map { it.starLevel })
+
+        val lv30Baseline = ChampionLoadout(
+            championId = "champ_anivia",
+            isUnlocked = true,
+            starLevel = 2,
+            championLevel = 30
+        )
+        assertEquals(40, lv30Baseline.maxNexusHp)
+        assertEquals(4, lv30Baseline.victoryHeal)
+        assertEquals(300, lv30Baseline.startingGold)
+        assertEquals(4, lv30Baseline.startingRerolls)
+        assertEquals(1, lv30Baseline.startingManaBonus)
+        assertEquals(0.445, lv30Baseline.rarityOdds.common, 0.0001)
+        assertEquals(0.400, lv30Baseline.rarityOdds.rare, 0.0001)
+        assertEquals(0.125, lv30Baseline.rarityOdds.epic, 0.0001)
+        assertEquals(0.030, lv30Baseline.rarityOdds.legendary, 0.0001)
+
+        val repo = GameRepository(FakeGameDao(), testDispatcher)
+        repo.ensureSeeded()
+        val vm = GameViewModel(repo)
+        advanceUntilIdle()
+
+        assertEquals(999_999, vm.uiState.value.legendProfile.wildFragments)
+        assertEquals(999_999, vm.uiState.value.legendProfile.starCrystals)
+        assertEquals(999_999, vm.uiState.value.legendProfile.novaCrystals)
+        assertEquals(999_999, vm.uiState.value.legendProfile.gemstones)
+        assertTrue(vm.uiState.value.legendProfile.ownedRelicIds.containsAll(CardCatalog.relics.map { it.id }))
+
+        val seededAnivia = vm.uiState.value.championLoadouts["champ_anivia"]!!
+        assertTrue(seededAnivia.isUnlocked)
+        assertEquals(30, seededAnivia.championLevel)
+
+        // Upgrade Anivia star power sequentially skipping omitted 1★ (2 -> 3)
+        vm.upgradeStarPower("champ_anivia", 3)
+        advanceUntilIdle()
+        assertEquals(3, vm.uiState.value.championLoadouts["champ_anivia"]!!.starLevel)
+
+        // Test Mode max helper jumps to 6★ Lv.30 + all constellation nodes
+        vm.maxChampionForTesting("champ_anivia")
+        advanceUntilIdle()
+        val maxed = vm.uiState.value.championLoadouts["champ_anivia"]!!
+        assertEquals(6, maxed.starLevel)
+        assertEquals(30, maxed.championLevel)
+        assertEquals(anivia.constellationNodes.size, maxed.unlockedConstellationNodes.size)
+    }
+
+    @Test
+    fun `anivia elemental mana ramp glacial overflow caprine forge and clash of giants discount work`() {
+        val adv = AdventureCatalog.getAdventure("adv_demacia_outskirts")
+        val node = adv.mapNodes.first { it.id == "d_fight_1a" }
+
+        val caprine = UnitOnBoard(
+            instanceId = "u_cap",
+            template = CardCatalog.getCard("card_flame_eyed_caprine"), // 3|2 Tough
+            ownerIsPlayer = true,
+            power = 3,
+            health = 2,
+            maxHealth = 2,
+            keywords = setOf(Keyword.TOUGH)
+        )
+        val mystics = UnitOnBoard(
+            instanceId = "u_mys",
+            template = CardCatalog.getCard("card_wild_mystics"), // 2|2 Overwhelm
+            ownerIsPlayer = true,
+            power = 2,
+            health = 2,
+            maxHealth = 2,
+            keywords = setOf(Keyword.OVERWHELM)
+        )
+        val harshWinds = HandCardInstance(
+            instanceId = "hc_hw",
+            template = CardCatalog.getCard("card_harsh_winds"), // 5-cost Burst Elemental
+            effectiveCost = 5
+        )
+        val clash = HandCardInstance(
+            instanceId = "hc_clash",
+            template = CardCatalog.getCard("card_clash_of_giants"), // 16-cost Slow Elemental
+            effectiveCost = 16
+        )
+        val enemyA = UnitOnBoard("e1", CardCatalog.getCard("card_cithria"), false, 5, 4, 4, emptySet())
+        val enemyB = UnitOnBoard("e2", CardCatalog.getCard("card_laurent_protege"), false, 3, 4, 4, emptySet())
+
+        var state = CombatState(
+            encounterNode = node,
+            adventure = adv,
+            championId = "champ_anivia",
+            starLevel = 3, // Glacial Overflow + Winter's Boon II
+            equippedRelics = emptyList(),
+            activePowers = emptyList(),
+            mutators = emptyList(),
+            playerNexusHp = 40,
+            playerMaxHp = 40,
+            enemyNexusHp = 20,
+            enemyMaxHp = 20,
+            playerMana = 9,
+            playerMaxMana = 9,
+            playerHand = listOf(harshWinds, clash),
+            playerBoard = listOf(caprine, mystics),
+            enemyBoard = listOf(enemyA, enemyB),
+            phase = CombatPhase.MAIN_ACTION_PHASE,
+            priorityHolder = PriorityHolder.PLAYER
+        )
+
+        // Playing Harsh Winds at 9 Max Mana:
+        // - Frostbites 2 enemies
+        // - Forges Flame-Eyed Caprine (+1|+1 -> 4|3)
+        // - Winter's Boon II grants +1 empty Mana gem (Max 9 -> 10 -> Enlightened!)
+        // - Wild Mystics hits Enlightened (+4|+4 -> 6|6)
+        // - Clash of Giants drops cost 16 -> 15
+        state = CombatEngine.playCardFromHand(state, "hc_hw")
+        assertEquals(10, state.playerMaxMana)
+        assertTrue(state.enemyBoard.all { it.isFrostbitten })
+        val capAfter = state.playerBoard.first { it.instanceId == "u_cap" }
+        assertEquals(4, capAfter.power)
+        assertEquals(3, capAfter.health)
+        val mysAfter = state.playerBoard.first { it.instanceId == "u_mys" }
+        assertEquals(6, mysAfter.power)
+        assertEquals(6, mysAfter.health)
+        val clashInHand = state.playerHand.first { it.instanceId == "hc_clash" }
+        assertEquals(15, state.effectivePlayCost(clashInHand))
+
+        // Playing another Elemental spell while already Enlightened triggers Glacial Overflow (+1|+1 to all allies)
+        val wings = HandCardInstance("hc_wings", CardCatalog.getCard("card_wings_of_cryophoenix"), effectiveCost = 7)
+        state = state.copy(playerMana = 7, playerHand = state.playerHand + wings)
+        state = CombatEngine.playCardFromHand(state, "hc_wings")
+        // Both Caprine (Forged +1|+1 AND Glacial Overflow +1|+1) & Mystics (+1|+1) grew before stack resolution
+        assertEquals(6, state.playerBoard.first { it.instanceId == "u_cap" }.power)
+        assertEquals(7, state.playerBoard.first { it.instanceId == "u_mys" }.power)
+    }
+
+    @Test
+    fun `crystal stormbird guardian follower mortal prophet endurance and eggnivia revival work`() {
+        val adv = AdventureCatalog.getAdventure("adv_demacia_outskirts")
+        val node = adv.mapNodes.first { it.id == "d_fight_1a" }
+
+        val guardian = UnitOnBoard("u_guard", CardCatalog.getCard("card_guardian_follower"), true, 3, 4, 4, emptySet())
+        val prophet = UnitOnBoard("u_proph", CardCatalog.getCard("card_mortal_prophet"), true, 0, 5, 5, emptySet())
+        val anivia = UnitOnBoard("u_anivia", CardCatalog.getCard("card_anivia"), true, 3, 5, 5, setOf(Keyword.ELEMENTAL))
+        val stormbird = HandCardInstance("hc_bird", CardCatalog.getCard("card_crystal_stormbird"), effectiveCost = 5)
+        val frostbittenEnemy = UnitOnBoard(
+            instanceId = "e_zero",
+            template = CardCatalog.getCard("card_cithria"),
+            ownerIsPlayer = false,
+            power = 2,
+            health = 4,
+            maxHealth = 4,
+            keywords = emptySet(),
+            isFrostbitten = true // 0 Power -> takes double damage from Anivia 6★ Crystallize!
+        )
+
+        var state = CombatState(
+            encounterNode = node,
+            adventure = adv,
+            championId = "champ_anivia",
+            starLevel = 6, // Includes 4★ Endurance & 6★ Crystallize
+            equippedRelics = emptyList(),
+            activePowers = emptyList(),
+            mutators = emptyList(),
+            round = 9,
+            playerNexusHp = 35,
+            playerMaxHp = 40,
+            enemyNexusHp = 20,
+            enemyMaxHp = 20,
+            playerMana = 9,
+            playerMaxMana = 9,
+            playerHasAttackToken = true,
+            playerHand = listOf(stormbird),
+            playerBoard = listOf(guardian, prophet, anivia),
+            enemyBoard = listOf(frostbittenEnemy),
+            phase = CombatPhase.MAIN_ACTION_PHASE,
+            priorityHolder = PriorityHolder.PLAYER
+        )
+
+        // Play Crystal Stormbird:
+        // - Winter's Boon II pushes Max Mana 9 -> 10 (Anivia levels up to 4|6!)
+        // - Skill deals 2 to all other units:
+        //   * Guardian Follower takes 0 damage from allied skill (stays 3|4)
+        //   * Mortal Prophet takes 2 -> 3 HP, Endurance +1|+1 -> 1|4, deals 1 to Enemy Nexus (20 -> 19)
+        //   * Frostbitten Enemy (0 Power) takes 2 * 2 = 4 damage via 6★ Crystallize -> slain!
+        state = CombatEngine.playCardFromHand(state, "hc_bird")
+        assertEquals(4, state.playerBoard.first { it.instanceId == "u_guard" }.health)
+        val prophAfter = state.playerBoard.first { it.instanceId == "u_proph" }
+        assertEquals(1, prophAfter.power)
+        assertEquals(4, prophAfter.health)
+        assertEquals(19, state.enemyNexusHp)
+        assertTrue(state.enemyBoard.isEmpty())
+        assertTrue(state.playerBoard.first { it.instanceId == "u_anivia" }.isLeveledUp)
+
+        // Anivia Last Breath -> Eggnivia -> Round Start hatches back into Leveled Anivia!
+        val enemyStrong = UnitOnBoard("e_big", CardCatalog.getCard("card_garen"), false, 10, 10, 10, emptySet())
+        state = state.copy(
+            priorityHolder = PriorityHolder.PLAYER,
+            phase = CombatPhase.COMBAT_DECLARE_ATTACK_PHASE,
+            enemyBoard = listOf(enemyStrong),
+            attackingUnitIds = listOf("u_anivia"),
+            blockPairings = mapOf("u_anivia" to "e_big")
+        )
+        state = CombatEngine.resolveCombatResolution(state, playerIsAttacking = true, logs = state.combatLog.toMutableList())
+        val egg = state.playerBoard.find { it.instanceId == "u_anivia" }
+        assertNotNull(egg)
+        assertEquals("card_eggnivia", egg!!.template.id)
+        assertEquals(2, egg.health)
+
+        // Advance round -> Round Start at 10 Max Mana hatches Eggnivia into Leveled Anivia
+        state = state.copy(
+            phase = CombatPhase.MAIN_ACTION_PHASE,
+            priorityHolder = PriorityHolder.PLAYER,
+            consecutivePasses = 1
+        )
+        val nextRound = CombatEngine.passPriority(state)
+        val hatched = nextRound.playerBoard.find { it.instanceId == "u_anivia" }
+        assertNotNull(hatched)
+        assertEquals("card_anivia", hatched!!.template.id)
+        assertTrue(hatched.isLeveledUp)
+    }
 }

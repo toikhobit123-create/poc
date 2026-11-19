@@ -133,11 +133,25 @@ object EnemyAIController {
                     }
                     logs.add("Ready Ranks granted Foe's attackers +1|+0!")
                 }
+                var newFrostbittenCount = state.enemiesFrostbittenCount
+                if (state.championId == "champ_anivia" && state.starLevel >= 6) {
+                    val strongest = nextBoard
+                        .filter { chosenIds.contains(it.instanceId) }
+                        .maxByOrNull { it.effectivePower }
+                    if (strongest != null) {
+                        if (!strongest.isFrostbitten) newFrostbittenCount += 1
+                        nextBoard = nextBoard.map {
+                            if (it.instanceId == strongest.instanceId) it.copy(isFrostbitten = true) else it
+                        }
+                        logs.add("Crystallize (6★): Frostbit attacking ${strongest.template.name}!")
+                    }
+                }
                 logs.add("Foe attacks with ${chosenIds.size} unit(s)! Assign blockers.")
                 return state.copy(
                     enemyBoard = nextBoard,
                     enemyHasAttackToken = false,
                     playerInitiatedCombat = false,
+                    enemiesFrostbittenCount = newFrostbittenCount,
                     phase = CombatPhase.COMBAT_DECLARE_BLOCK_PHASE,
                     priorityHolder = PriorityHolder.PLAYER,
                     consecutivePasses = 0,

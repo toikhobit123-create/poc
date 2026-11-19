@@ -88,6 +88,7 @@ fun HomeHubScreen(
     onOpenAdventures: () -> Unit,
     onResumeRun: () -> Unit,
     onAbandonRun: () -> Unit,
+    onGrantUnlimitedTestResources: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showGlossary by remember { mutableStateOf(false) }
@@ -231,13 +232,26 @@ fun HomeHubScreen(
                     style = MaterialTheme.typography.titleLarge,
                     color = ParchmentWhite
                 )
-                TextButton(
-                    onClick = { showGlossary = true },
-                    modifier = Modifier.testTag("open_glossary_button")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.AutoStories, contentDescription = "Keywords Codex", tint = ArcaneCyan, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Keywords Codex", color = ArcaneCyan)
+                    OutlinedButton(
+                        onClick = onGrantUnlimitedTestResources,
+                        modifier = Modifier.testTag("grant_unlimited_resources_button"),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        border = BorderStroke(1.dp, EmeraldHeal.copy(alpha = 0.7f))
+                    ) {
+                        Text("∞ Test Res", style = MaterialTheme.typography.labelMedium, color = EmeraldHeal)
+                    }
+                    TextButton(
+                        onClick = { showGlossary = true },
+                        modifier = Modifier.testTag("open_glossary_button")
+                    ) {
+                        Icon(Icons.Default.AutoStories, contentDescription = "Keywords Codex", tint = ArcaneCyan, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Codex", color = ArcaneCyan)
+                    }
                 }
             }
 
@@ -364,11 +378,12 @@ fun HomeHubScreen(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         StatChip("HP ${selectedLoadout.maxNexusHp}", EmeraldHeal, Modifier.weight(1f))
-                        StatChip("Gold ${selectedLoadout.startingGold}", HextechGoldBright, Modifier.weight(1f))
-                        StatChip("Frags ${selectedLoadout.fragments}", ArcaneCyan, Modifier.weight(1f))
+                        StatChip("+${selectedLoadout.victoryHeal}/Win", ArcaneCyan, Modifier.weight(1f))
+                        StatChip("${selectedLoadout.startingGold}g", HextechGoldBright, Modifier.weight(1f))
+                        StatChip("${selectedLoadout.startingRerolls} Roll", MutedSilver, Modifier.weight(1f))
                     }
 
                     val activeStarPower = selectedChamp.starPowers.lastOrNull { it.starLevel <= selectedLoadout.starLevel }

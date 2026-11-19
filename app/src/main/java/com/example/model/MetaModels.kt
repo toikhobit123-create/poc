@@ -32,7 +32,31 @@ data class ChampionTemplate(
     val baseDeck: List<DeckCardEntry>,
     val starPowers: List<StarPowerSpec>,
     val constellationNodes: List<ConstellationMinorNode>
+) {
+    fun nextStarPower(currentStar: Int): StarPowerSpec? =
+        starPowers.filter { it.starLevel > currentStar }.minByOrNull { it.starLevel }
+}
+
+data class RarityOdds(
+    val common: Double,
+    val rare: Double,
+    val epic: Double,
+    val legendary: Double
 )
+
+fun rarityOddsForLevel(championLevel: Int): RarityOdds {
+    val lv = championLevel.coerceIn(1, 30)
+    if (lv >= 30) {
+        return RarityOdds(common = 0.445, rare = 0.400, epic = 0.125, legendary = 0.030)
+    }
+    val t = (lv - 1) / 29.0
+    return RarityOdds(
+        common = 0.75 - t * (0.75 - 0.445),
+        rare = 0.20 + t * (0.400 - 0.20),
+        epic = 0.05 + t * (0.125 - 0.05),
+        legendary = t * 0.030
+    )
+}
 
 data class ChampionLoadout(
     val championId: String,
@@ -47,16 +71,47 @@ data class ChampionLoadout(
     val cosmicForgedSlots: Int = 0
 ) {
     val maxNexusHp: Int
-        get() = 30 + (championLevel / 2) * 2 + (if (starLevel >= 4) 5 else 0) + (unlockedConstellationNodes.size * 3)
+        get() {
+            val champ = CardCatalog.getChampion(championId)
+            val levelHpBonus = ((championLevel.coerceIn(1, 30) - 1) * 10) / 29
+            val nodeHpBonus = champ.constellationNodes
+                .filter { unlockedConstellationNodes.contains(it.id) }
+                .sumOf { it.bonusMaxHp }
+            return champ.baseMaxHp + levelHpBonus + nodeHpBonus
+        }
+
+    val victoryHeal: Int
+        get() = when {
+            championLevel >= 24 -> 4
+            championLevel >= 12 -> 3
+            else -> 2
+        }
 
     val startingGold: Int
-        get() = 100 + (championLevel * 10) + (unlockedConstellationNodes.count { it.contains("gold") } * 50)
+        get() {
+            val champ = CardCatalog.getChampion(championId)
+            val levelGold = 100 + ((championLevel.coerceIn(1, 30) - 1) * 200) / 29
+            val nodeGold = champ.constellationNodes
+                .filter { unlockedConstellationNodes.contains(it.id) }
+                .sumOf { it.bonusStartingGold }
+            return levelGold + nodeGold
+        }
 
     val startingRerolls: Int
-        get() = 2 + (if (championLevel >= 6) 1 else 0) + (unlockedConstellationNodes.count { it.contains("reroll") })
+        get() {
+            val champ = CardCatalog.getChampion(championId)
+            val levelRerolls = 2 + (if (championLevel >= 10) 1 else 0) + (if (championLevel >= 22) 1 else 0)
+            val nodeRerolls = champ.constellationNodes
+                .filter { unlockedConstellationNodes.contains(it.id) }
+                .sumOf { it.bonusRerolls }
+            return levelRerolls + nodeRerolls
+        }
 
     val startingManaBonus: Int
         get() = if (starLevel >= 2) 1 else 0
+
+    val rarityOdds: RarityOdds
+        get() = rarityOddsForLevel(championLevel)
 }
 
 enum class NodeType(val displayName: String, val shortCode: String) {
