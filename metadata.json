@@ -1,0 +1,6 @@
+{
+  "name": "Path of Champions",
+  "description": "Single-player roguelike deckbuilder inspired by The Path of Champions (Legends of Runeterra), featuring branching adventure maps, champions, relics, powers, items, and tactical keyword-driven card combat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
