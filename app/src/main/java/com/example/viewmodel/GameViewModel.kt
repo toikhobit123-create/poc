@@ -815,7 +815,10 @@ class GameViewModel(
                 }
                 val next = EnemyAIController.executeTurn(latest)
                 _uiState.update { it.copy(combatState = next) }
-                if (next.phase == CombatPhase.GAME_OVER || next.priorityHolder != PriorityHolder.ENEMY) {
+                if (next.phase == CombatPhase.GAME_OVER ||
+                    next.priorityHolder != PriorityHolder.ENEMY ||
+                    next == latest
+                ) {
                     break
                 }
             }
@@ -846,6 +849,29 @@ class GameViewModel(
         val current = _uiState.value.combatState ?: return
         if (current.priorityHolder != PriorityHolder.PLAYER) return
         _uiState.update { it.copy(combatState = CombatEngine.toggleUnitAttack(current, unitId)) }
+    }
+
+    fun dragBenchUnitToAttack(unitId: String) {
+        val current = _uiState.value.combatState ?: return
+        if (current.priorityHolder != PriorityHolder.PLAYER) return
+        val prepared = if (current.phase == CombatPhase.MAIN_ACTION_PHASE && current.playerHasAttackToken) {
+            CombatEngine.enterAttackDeclaration(current)
+        } else {
+            current
+        }
+        if (prepared.phase != CombatPhase.COMBAT_DECLARE_ATTACK_PHASE) return
+        if (prepared.attackingUnitIds.contains(unitId)) return
+        _uiState.update { it.copy(combatState = CombatEngine.toggleUnitAttack(prepared, unitId)) }
+    }
+
+    fun removeAttacker(unitId: String) {
+        val current = _uiState.value.combatState ?: return
+        if (current.priorityHolder != PriorityHolder.PLAYER ||
+            current.phase != CombatPhase.COMBAT_DECLARE_ATTACK_PHASE ||
+            !current.attackingUnitIds.contains(unitId)
+        ) return
+        val next = CombatEngine.toggleUnitAttack(current, unitId)
+        _uiState.update { it.copy(combatState = next) }
     }
 
     fun commitAttack() {

@@ -71,8 +71,10 @@ data class CombatState(
 
     val playerHand: List<HandCardInstance> = emptyList(),
     val playerDrawPile: List<HandCardInstance> = emptyList(),
+    val playerGraveyard: List<CardTemplate> = emptyList(),
     val enemyHand: List<CardTemplate> = emptyList(),
     val enemyDrawPool: List<CardTemplate> = emptyList(),
+    val enemyGraveyard: List<CardTemplate> = emptyList(),
 
     val playerBoard: List<UnitOnBoard> = emptyList(),
     val enemyBoard: List<UnitOnBoard> = emptyList(),
@@ -90,6 +92,8 @@ data class CombatState(
     val playerCardsPlayedThisRound: Int = 0,
     val playerSpellsPlayedThisRound: Int = 0,
     val playerPlunderActive: Boolean = false,
+    val enemiesStunnedCount: Int = 0,
+    val enemiesFrostbittenCount: Int = 0,
     val enemySuppressionCount: Int = 0,
     val enemyTerrorCount: Int = 0,
 
@@ -143,6 +147,9 @@ data class CombatState(
         var cost = card.effectiveCost
         val isSpell = card.template.type == CardType.SPELL
         if (isSpell && activePowers.any { it.id == "pow_spellslinger" }) {
+            cost -= 1
+        }
+        if (card.isCreated && activePowers.any { it.id == "pow_wild_inspiration" }) {
             cost -= 1
         }
         if (isSpell && playerHand.any { it.template.id == "card_curse_suppression" }) {

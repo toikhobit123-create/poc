@@ -494,6 +494,19 @@ object CardCatalog {
             description = "Curse. Inflicts -1|-0 to allies while held. Play to purge.",
             effectType = CardEffectType.PURGE_TERROR_CURSE,
             isCollectibleReward = false
+        ),
+        CardTemplate(
+            id = "card_ignition", name = "Ignition", region = Region.PILTOVER_ZAUN, type = CardType.SPELL,
+            cost = 0, spellSpeed = SpellSpeed.BURST, keywords = setOf(Keyword.FLEETING),
+            description = "Burst, Fleeting. Deal 1 to the enemy Nexus.",
+            effectType = CardEffectType.DEAL_DAMAGE_NEXUS, effectValue = 1,
+            isCollectibleReward = false
+        ),
+        CardTemplate(
+            id = "card_tail_of_the_dragon", name = "Tail of the Dragon", region = Region.IONIA, type = CardType.UNIT,
+            cost = 3, basePower = 3, baseHealth = 2, keywords = setOf(Keyword.ATTUNE),
+            description = "Attune. Summoned by Concussive Palm.",
+            isCollectibleReward = false
         )
     ).associateBy { it.id }
 

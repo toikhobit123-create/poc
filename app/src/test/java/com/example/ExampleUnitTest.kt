@@ -466,4 +466,362 @@ class ExampleUnitTest {
         advanceUntilIdle()
         assertEquals(PriorityHolder.PLAYER, vm.uiState.value.combatState!!.priorityHolder)
     }
+
+    @Test
+    fun `fast spell during attack declaration resolves stack via AI and returns priority to PLAYER`() {
+        val adv = AdventureCatalog.getAdventure("adv_demacia_outskirts")
+        val node = adv.mapNodes.first { it.id == "d_fight_1a" }
+        val ally = UnitOnBoard(
+            instanceId = "p1",
+            template = CardCatalog.getCard("card_cithria"),
+            ownerIsPlayer = true,
+            power = 2,
+            health = 2,
+            maxHealth = 2,
+            keywords = emptySet()
+        )
+        val fastShot = HandCardInstance(
+            instanceId = "hc_fast",
+            template = CardCatalog.getCard("card_mystic_shot"),
+            effectiveCost = 2
+        )
+        val state = CombatState(
+            encounterNode = node,
+            adventure = adv,
+            championId = "champ_garen",
+            starLevel = 1,
+            equippedRelics = emptyList(),
+            activePowers = emptyList(),
+            mutators = emptyList(),
+            playerNexusHp = 30,
+            playerMaxHp = 30,
+            enemyNexusHp = 15,
+            enemyMaxHp = 15,
+            playerMana = 2,
+            enemyMana = 1,
+            playerHasAttackToken = true,
+            playerBoard = listOf(ally),
+            playerHand = listOf(fastShot),
+            enemyHand = emptyList(),
+            phase = CombatPhase.COMBAT_DECLARE_ATTACK_PHASE,
+            attackingUnitIds = listOf("p1"),
+            priorityHolder = PriorityHolder.PLAYER
+        )
+
+        val onStack = CombatEngine.playCardFromHand(state, "hc_fast")
+        assertEquals(CombatPhase.COMBAT_DECLARE_ATTACK_PHASE, onStack.phase)
+        assertEquals(PriorityHolder.ENEMY, onStack.priorityHolder)
+        assertEquals(1, onStack.spellStack.size)
+
+        val resolved = EnemyAIController.executeTurn(onStack)
+        assertTrue(resolved.spellStack.isEmpty())
+        assertEquals(CombatPhase.COMBAT_DECLARE_ATTACK_PHASE, resolved.phase)
+        assertEquals(PriorityHolder.PLAYER, resolved.priorityHolder)
+        assertEquals(13, resolved.enemyNexusHp)
+    }
+
+    @Test
+    fun `fast spell while defending resolves stack and keeps PLAYER in COMBAT_DECLARE_BLOCK_PHASE`() {
+        val adv = AdventureCatalog.getAdventure("adv_demacia_outskirts")
+        val node = adv.mapNodes.first { it.id == "d_fight_1a" }
+        val enemyAtk = UnitOnBoard(
+            instanceId = "e1",
+            template = CardCatalog.getCard("card_cithria"),
+            ownerIsPlayer = false,
+            power = 2,
+            health = 2,
+            maxHealth = 2,
+            keywords = emptySet()
+        )
+        val fastShot = HandCardInstance(
+            instanceId = "hc_fast",
+            template = CardCatalog.getCard("card_mystic_shot"),
+            effectiveCost = 2
+        )
+        val state = CombatState(
+            encounterNode = node,
+            adventure = adv,
+            championId = "champ_garen",
+            starLevel = 1,
+            equippedRelics = emptyList(),
+            activePowers = emptyList(),
+            mutators = emptyList(),
+            playerNexusHp = 30,
+            playerMaxHp = 30,
+            enemyNexusHp = 15,
+            enemyMaxHp = 15,
+            playerMana = 2,
+            enemyMana = 1,
+            playerHasAttackToken = false,
+            enemyHasAttackToken = false,
+            playerInitiatedCombat = false,
+            enemyBoard = listOf(enemyAtk),
+            attackingUnitIds = listOf("e1"),
+            playerHand = listOf(fastShot),
+            enemyHand = emptyList(),
+            phase = CombatPhase.COMBAT_DECLARE_BLOCK_PHASE,
+            priorityHolder = PriorityHolder.PLAYER
+        )
+
+        val onStack = CombatEngine.playCardFromHand(state, "hc_fast")
+        assertEquals(PriorityHolder.ENEMY, onStack.priorityHolder)
+
+        val resolved = EnemyAIController.executeTurn(onStack)
+        assertTrue(resolved.spellStack.isEmpty())
+        assertEquals(CombatPhase.COMBAT_DECLARE_BLOCK_PHASE, resolved.phase)
+        assertEquals(PriorityHolder.PLAYER, resolved.priorityHolder)
+        assertTrue(resolved.enemyBoard.isEmpty())
+        assertEquals(30, resolved.playerNexusHp)
+    }
+
+    @Test
+    fun `enemy node powers Stone Ward For Demacia Enlightened Harmony Living Shadow and Glorious Evolution work`() {
+        // 1. Stone Ward adds +5 Max HP
+        val demacia = AdventureCatalog.getAdventure("adv_demacia_outskirts")
+        val stoneWardNode = demacia.mapNodes.first { it.id == "d_fight_1b" }
+        val baseRun = RunState(
+            runId = "run_1",
+            adventureId = demacia.id,
+            championId = "champ_garen",
+            currentNodeId = "d_fight_1b",
+            completedNodeIds = emptyList(),
+            currentNexusHp = 30,
+            maxNexusHp = 30,
+            gold = 100,
+            rerollsRemaining = 2,
+            revivesRemaining = 1,
+            activePowerIds = emptyList(),
+            runDeck = listOf(DeckCardEntry("card_cithria", 4))
+        )
+        val loadout = ChampionLoadout("champ_garen", starLevel = 1)
+        val stoneEncounter = CombatEngine.createEncounter(baseRun, loadout, demacia, stoneWardNode)
+        assertEquals(stoneWardNode.enemyMaxHp + 5, stoneEncounter.enemyMaxHp)
+        assertEquals(stoneWardNode.enemyMaxHp + 5, stoneEncounter.enemyNexusHp)
+
+        // 2. For Demacia! buffs enemy board +1|+1 on even rounds
+        val bossNode = demacia.mapNodes.first { it.id == "d_boss" }
+        val garenEnemy = UnitOnBoard(
+            instanceId = "eg_1",
+            template = CardCatalog.getCard("card_cithria"),
+            ownerIsPlayer = false,
+            power = 2,
+            health = 2,
+            maxHealth = 2,
+            keywords = emptySet()
+        )
+        val round1BossState = CombatState(
+            encounterNode = bossNode,
+            adventure = demacia,
+            championId = "champ_garen",
+            starLevel = 1,
+            equippedRelics = emptyList(),
+            activePowers = emptyList(),
+            mutators = emptyList(),
+            round = 1,
+            playerNexusHp = 30,
+            playerMaxHp = 30,
+            enemyNexusHp = 28,
+            enemyMaxHp = 28,
+            enemyBoard = listOf(garenEnemy),
+            phase = CombatPhase.MAIN_ACTION_PHASE,
+            priorityHolder = PriorityHolder.PLAYER,
+            consecutivePasses = 1
+        )
+        val round2BossState = CombatEngine.passPriority(round1BossState)
+        assertEquals(2, round2BossState.round)
+        assertEquals(3, round2BossState.enemyBoard.first().power)
+        assertEquals(3, round2BossState.enemyBoard.first().health)
+
+        // 3. Enlightened Harmony heals Karma Nexus +1 when enemy casts spell
+        val ionia = AdventureCatalog.getAdventure("adv_ionia_woods")
+        val karmaBoss = ionia.mapNodes.first { it.id == "i_boss" }
+        val karmaState = CombatState(
+            encounterNode = karmaBoss,
+            adventure = ionia,
+            championId = "champ_lux",
+            starLevel = 1,
+            equippedRelics = emptyList(),
+            activePowers = emptyList(),
+            mutators = emptyList(),
+            playerNexusHp = 30,
+            playerMaxHp = 30,
+            enemyNexusHp = 30,
+            enemyMaxHp = 35,
+            enemyMana = 4,
+            playerBoard = listOf(
+                UnitOnBoard("p_1", CardCatalog.getCard("card_cithria"), true, 2, 2, 2, emptySet())
+            ),
+            enemyHand = listOf(CardCatalog.getCard("card_mystic_shot")),
+            phase = CombatPhase.MAIN_ACTION_PHASE,
+            priorityHolder = PriorityHolder.ENEMY
+        )
+        val afterKarmaCast = EnemyAIController.executeTurn(karmaState)
+        assertEquals(31, afterKarmaCast.enemyNexusHp)
+
+        // 4. Glorious Evolution grants +1|+1 and random keyword on enemy summon
+        val zaun = AdventureCatalog.getAdventure("adv_zaun_foundry")
+        val viktorBoss = zaun.mapNodes.first { it.id == "z_boss" }
+        val viktorState = CombatState(
+            encounterNode = viktorBoss,
+            adventure = zaun,
+            championId = "champ_jinx",
+            starLevel = 1,
+            equippedRelics = emptyList(),
+            activePowers = emptyList(),
+            mutators = emptyList(),
+            playerNexusHp = 30,
+            playerMaxHp = 30,
+            enemyNexusHp = 45,
+            enemyMaxHp = 45,
+            enemyMana = 3,
+            enemyHand = listOf(CardCatalog.getCard("card_cithria")),
+            phase = CombatPhase.MAIN_ACTION_PHASE,
+            priorityHolder = PriorityHolder.ENEMY
+        )
+        val afterViktorSummon = EnemyAIController.executeTurn(viktorState)
+        val summoned = afterViktorSummon.enemyBoard.first()
+        // Base Cithria is 2|2, +1|+1 from 3.0★ adventure, +1|+1 from Glorious Evolution -> 4|4 + extra keyword
+        assertEquals(4, summoned.power)
+        assertEquals(4, summoned.health)
+        assertTrue(summoned.keywords.size >= 2)
+    }
+
+    @Test
+    fun `wild inspiration discounts created cards concussive palm summons tail and jinx level up creates rocket`() {
+        val adv = AdventureCatalog.getAdventure("adv_demacia_outskirts")
+        val node = adv.mapNodes.first { it.id == "d_fight_1a" }
+
+        // Wild Inspiration discounts created card by 1
+        val createdSpell = HandCardInstance(
+            instanceId = "hc_created",
+            template = CardCatalog.getCard("card_concussive_palm"), // cost 4
+            effectiveCost = 4,
+            isCreated = true
+        )
+        val jinxBoard = UnitOnBoard(
+            instanceId = "u_jinx",
+            template = CardCatalog.getCard("card_jinx"),
+            ownerIsPlayer = true,
+            power = 4,
+            health = 3,
+            maxHealth = 3,
+            keywords = setOf(Keyword.QUICK_ATTACK)
+        )
+        val enemyUnit = UnitOnBoard(
+            instanceId = "e_1",
+            template = CardCatalog.getCard("card_cithria"),
+            ownerIsPlayer = false,
+            power = 2,
+            health = 2,
+            maxHealth = 2,
+            keywords = emptySet()
+        )
+        val state = CombatState(
+            encounterNode = node,
+            adventure = adv,
+            championId = "champ_jinx",
+            starLevel = 1,
+            equippedRelics = emptyList(),
+            activePowers = listOf(CardCatalog.getPower("pow_wild_inspiration")),
+            mutators = emptyList(),
+            playerNexusHp = 30,
+            playerMaxHp = 30,
+            enemyNexusHp = 15,
+            enemyMaxHp = 15,
+            playerMana = 3,
+            enemyMana = 1,
+            playerHand = listOf(createdSpell),
+            playerBoard = listOf(jinxBoard),
+            enemyBoard = listOf(enemyUnit),
+            phase = CombatPhase.MAIN_ACTION_PHASE,
+            priorityHolder = PriorityHolder.PLAYER
+        )
+
+        assertEquals(3, state.effectivePlayCost(createdSpell))
+        assertTrue(state.canPlayCard(createdSpell))
+
+        // Playing Concussive Palm empties hand -> Jinx levels up (+4 Nexus dmg & creates Fleeting Super Mega Death Rocket!)
+        val onStack = CombatEngine.playCardFromHand(state, "hc_created")
+        val resolved = EnemyAIController.executeTurn(onStack)
+
+        assertTrue(resolved.enemyBoard.first().isStunned)
+        assertTrue(resolved.playerBoard.any { it.template.id == "card_tail_of_the_dragon" })
+        assertTrue(resolved.playerBoard.first { it.template.id == "card_jinx" }.isLeveledUp)
+        assertTrue(resolved.playerHand.any { it.template.id == "card_super_mega_rocket" && it.isCreated })
+        // Enemy Nexus: 15 - 1 (Jinx 1★ on play) - 4 (Jinx Level Up) = 10
+        assertEquals(10, resolved.enemyNexusHp)
+    }
+
+    @Test
+    fun `slain units and resolved spells move to graveyard while survivors return to bench`() {
+        val adv = AdventureCatalog.getAdventure("adv_demacia_outskirts")
+        val node = adv.mapNodes.first { it.id == "d_fight_1a" }
+
+        val strongAlly = UnitOnBoard(
+            instanceId = "p_strong",
+            template = CardCatalog.getCard("card_garen"), // 5|5
+            ownerIsPlayer = true,
+            power = 5,
+            health = 5,
+            maxHealth = 5,
+            keywords = setOf(Keyword.REGENERATION)
+        )
+        val fragileEnemy = UnitOnBoard(
+            instanceId = "e_fragile",
+            template = CardCatalog.getCard("card_cithria"), // 2|2
+            ownerIsPlayer = false,
+            power = 2,
+            health = 2,
+            maxHealth = 2,
+            keywords = emptySet()
+        )
+        val burstSpell = HandCardInstance(
+            instanceId = "hc_burst",
+            template = CardCatalog.getCard("card_prismatic_barrier"),
+            effectiveCost = 2
+        )
+
+        var state = CombatState(
+            encounterNode = node,
+            adventure = adv,
+            championId = "champ_garen",
+            starLevel = 1,
+            equippedRelics = emptyList(),
+            activePowers = emptyList(),
+            mutators = emptyList(),
+            playerNexusHp = 30,
+            playerMaxHp = 30,
+            enemyNexusHp = 15,
+            enemyMaxHp = 15,
+            playerMana = 4,
+            enemyMana = 1,
+            playerHasAttackToken = true,
+            playerHand = listOf(burstSpell),
+            playerBoard = listOf(strongAlly),
+            enemyBoard = listOf(fragileEnemy),
+            phase = CombatPhase.MAIN_ACTION_PHASE,
+            priorityHolder = PriorityHolder.PLAYER
+        )
+
+        // 1. Cast Burst spell -> effect activates -> spell goes to playerGraveyard
+        state = CombatEngine.playCardFromHand(state, "hc_burst")
+        assertTrue(state.playerGraveyard.any { it.id == "card_prismatic_barrier" })
+
+        // 2. Move strongAlly from bench into Shared Battlefield attack & resolve block
+        state = CombatEngine.enterAttackDeclaration(state)
+        state = CombatEngine.toggleUnitAttack(state, "p_strong")
+        assertEquals(listOf("p_strong"), state.attackingUnitIds)
+
+        state = CombatEngine.commitPlayerAttack(state)
+        state = state.copy(
+            priorityHolder = PriorityHolder.ENEMY,
+            blockPairings = mapOf("p_strong" to "e_fragile")
+        )
+        state = CombatEngine.resolveCombatResolution(state, playerIsAttacking = true, logs = state.combatLog.toMutableList())
+
+        // Slain enemy enters enemyGraveyard; surviving ally returns to bench (attackingUnitIds cleared)
+        assertTrue(state.enemyBoard.isEmpty())
+        assertTrue(state.enemyGraveyard.any { it.id == "card_cithria" })
+        assertEquals(1, state.playerBoard.count { it.instanceId == "p_strong" })
+    }
 }

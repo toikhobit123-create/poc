@@ -1,9 +1,24 @@
 package com.example.ui.components
 
+import androidx.annotation.DrawableRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +26,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -23,11 +39,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SportsKabaddi
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,22 +61,36 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import com.example.R
 import com.example.model.CardCatalog
 import com.example.model.CardTemplate
 import com.example.model.CardType
 import com.example.model.DeckCardEntry
+import com.example.model.HandCardInstance
 import com.example.model.ItemTemplate
 import com.example.model.Keyword
 import com.example.model.KeywordCategory
@@ -304,20 +341,320 @@ fun StatBadge(
     }
 }
 
+@DrawableRes
+fun cardPortraitRes(cardId: String): Int? = when (cardId) {
+    "card_jinx", "card_super_mega_rocket" -> R.drawable.img_champ_jinx
+    "card_lux", "card_final_spark" -> R.drawable.img_champ_lux
+    "card_yasuo", "card_steel_tempest" -> R.drawable.img_champ_yasuo
+    else -> null
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun HandCardView(
+    handCard: HandCardInstance,
+    effectiveCost: Int,
+    playable: Boolean,
+    isFocused: Boolean,
+    cardWidth: Dp,
+    cardHeight: Dp,
+    descFontSize: TextUnit,
+    statFontSize: TextUnit,
+    fanAngle: Float = 0f,
+    fanLiftY: Dp = 0.dp,
+    isDragging: Boolean = false,
+    testTag: String? = null,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val template = handCard.template
+    val regionColor = regionAccentColor(template.region)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val elevated = (isPressed || isFocused) && !isDragging
+
+    val scale by animateFloatAsState(
+        targetValue = if (elevated) 1.5f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "hand_card_scale"
+    )
+    val liftY by animateDpAsState(
+        targetValue = if (elevated) -cardHeight * 0.48f else fanLiftY,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "hand_card_lift"
+    )
+    val rotation by animateFloatAsState(
+        targetValue = if (elevated || isDragging) 0f else fanAngle,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "hand_card_rotation"
+    )
+
+    val borderColor = when {
+        isFocused -> HextechGoldBright
+        playable && template.isChampion -> HextechGold
+        playable -> ArcaneCyan
+        template.type == CardType.CURSE -> CurseMagenta
+        else -> SlateBorder
+    }
+
+    val portraitRes = cardPortraitRes(template.id)
+    val artHeight = cardHeight * 0.44f
+    val smallTextSize = (descFontSize.value * 0.72f).coerceAtLeast(7f).sp
+    val tinyStatSize = (statFontSize.value * 0.8f).coerceAtLeast(9f).sp
+
+    Surface(
+        modifier = modifier
+            .zIndex(if (elevated) 50f else 1f)
+            .alpha(if (isDragging) 0.25f else 1f)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                rotationZ = rotation
+                translationY = liftY.toPx()
+            }
+            .size(width = cardWidth, height = cardHeight)
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(cardWidth * 0.11f),
+        color = if (playable) ObsidianCard else ObsidianBg,
+        border = BorderStroke(if (elevated) 2.dp else 1.2.dp, borderColor),
+        shadowElevation = if (elevated) 12.dp else 3.dp
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Upper Art Banner
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(artHeight)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(regionColor.copy(alpha = 0.42f), ObsidianSurface)
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (portraitRes != null) {
+                        Image(
+                            painter = painterResource(id = portraitRes),
+                            contentDescription = template.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = when (template.type) {
+                                CardType.SPELL -> Icons.Default.AutoFixHigh
+                                CardType.CHAMPION -> Icons.Default.Star
+                                CardType.EQUIPMENT -> Icons.Default.Gavel
+                                CardType.LANDMARK -> Icons.Default.HourglassBottom
+                                CardType.CURSE -> Icons.Default.Bolt
+                                CardType.UNIT -> Icons.Default.SportsKabaddi
+                            },
+                            contentDescription = template.name,
+                            tint = regionColor,
+                            modifier = Modifier.size(cardWidth * 0.38f)
+                        )
+                    }
+                    // Subtle top scrim for Mana & Item readability
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent)
+                                )
+                            )
+                    )
+                }
+
+                // Name + Skill Description
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = cardWidth * 0.06f, vertical = cardHeight * 0.02f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = template.name,
+                        fontSize = smallTextSize,
+                        lineHeight = smallTextSize * 1.1f,
+                        fontWeight = FontWeight.Bold,
+                        color = if (template.isChampion) HextechGoldBright else ParchmentWhite,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                    val descSummary = if (template.spellSpeed != SpellSpeed.NONE) {
+                        "${template.spellSpeed.displayName}: ${template.description}"
+                    } else {
+                        template.description
+                    }
+                    Text(
+                        text = descSummary,
+                        fontSize = (smallTextSize.value * 0.85f).coerceAtLeast(6.5f).sp,
+                        lineHeight = (smallTextSize.value * 0.95f).coerceAtLeast(7.5f).sp,
+                        color = MutedSilver,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                // Bottom Stats Row (ATK Gold / HP Red or Spell badge)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = cardWidth * 0.06f, vertical = cardHeight * 0.03f),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (template.type == CardType.UNIT || template.type == CardType.CHAMPION || template.type == CardType.EQUIPMENT) {
+                        val totalPow = template.basePower + handCard.bonusPower
+                        val totalHp = template.baseHealth + handCard.bonusHealth
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(LegendaryAmber.copy(alpha = 0.9f))
+                                .padding(horizontal = cardWidth * 0.07f, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "$totalPow",
+                                fontSize = tinyStatSize,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ObsidianBg
+                            )
+                        }
+                        if (handCard.attachedItems.isNotEmpty()) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "Items",
+                                tint = EpicViolet,
+                                modifier = Modifier.size(cardWidth * 0.16f)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(CrimsonNexus.copy(alpha = 0.92f))
+                                .padding(horizontal = cardWidth * 0.07f, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "$totalHp",
+                                fontSize = tinyStatSize,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ParchmentWhite
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = template.spellSpeed.displayName.uppercase(),
+                            fontSize = (smallTextSize.value * 0.85f).coerceAtLeast(6.5f).sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ArcaneCyan,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+
+            // Mana Gem Overlay (Top-Left)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(cardWidth * 0.05f)
+                    .size(cardWidth * 0.30f)
+                    .clip(CircleShape)
+                    .background(ManaBlue)
+                    .border(1.dp, ParchmentWhite, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "$effectiveCost",
+                    fontSize = tinyStatSize,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = ObsidianBg
+                )
+            }
+
+            // Fleeting indicator (Top-Right)
+            if (handCard.isFleeting) {
+                Icon(
+                    imageVector = Icons.Default.HourglassBottom,
+                    contentDescription = "Fleeting",
+                    tint = EpicViolet,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(cardWidth * 0.06f)
+                        .size(cardWidth * 0.2f)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun UnitToken(
     unit: UnitOnBoard,
     isAttacking: Boolean = false,
     isBlockingLabel: String? = null,
     isSelected: Boolean = false,
+    isValidBlockCandidate: Boolean = false,
+    isDragging: Boolean = false,
+    tileWidth: Dp = 88.dp,
+    tileHeight: Dp = 110.dp,
+    statFontSize: TextUnit = 14.sp,
     testTag: String? = null,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    // Summon entrance pop-in animation
+    val spawnScale = remember(unit.instanceId) { Animatable(0.84f) }
+    LaunchedEffect(unit.instanceId) {
+        spawnScale.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
+        )
+    }
+
+    // Damage hit feedback when unit health drops
+    var prevHealth by remember(unit.instanceId) { mutableIntStateOf(unit.health) }
+    var damageDelta by remember(unit.instanceId) { mutableIntStateOf(0) }
+    LaunchedEffect(unit.health) {
+        if (unit.health < prevHealth) {
+            damageDelta = prevHealth - unit.health
+            prevHealth = unit.health
+            kotlinx.coroutines.delay(650)
+            damageDelta = 0
+        } else {
+            prevHealth = unit.health
+        }
+    }
+
     val borderColor = when {
+        damageDelta > 0 -> CrimsonNexus
         isSelected -> ArcaneCyan
         isAttacking -> LegendaryAmber
         isBlockingLabel != null -> EmeraldHeal
+        isValidBlockCandidate -> ArcaneCyan.copy(alpha = 0.85f)
         unit.isStunned -> CrimsonNexus
         unit.isFrostbitten -> ManaBlue
         unit.hasBarrier -> HextechGoldBright
@@ -325,121 +662,210 @@ fun UnitToken(
         else -> SlateBorderHighlight
     }
 
+    val regionColor = regionAccentColor(unit.template.region)
+    val portraitRes = cardPortraitRes(unit.template.id)
+
     Surface(
         modifier = modifier
-            .width(108.dp)
+            .alpha(if (isDragging) 0.25f else 1f)
+            .graphicsLayer {
+                scaleX = spawnScale.value
+                scaleY = spawnScale.value
+            }
+            .size(width = tileWidth, height = tileHeight)
             .minimumInteractiveComponentSize()
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(tileWidth * 0.14f),
         color = if (unit.isFrostbitten) ObsidianSurfaceElevated else ObsidianCard,
-        border = BorderStroke(if (isSelected || isAttacking) 2.5.dp else 1.5.dp, borderColor)
+        border = BorderStroke(
+            if (damageDelta > 0 || isSelected || isAttacking || isBlockingLabel != null) 2.2.dp else 1.4.dp,
+            borderColor
+        ),
+        shadowElevation = if (isSelected || isAttacking) 6.dp else 2.dp
     ) {
-        Column(
-            modifier = Modifier.padding(7.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Character Portrait / Emblem occupying main tile area (description text hidden)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(regionColor.copy(alpha = 0.38f), ObsidianBg)
+                        )
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = unit.template.name,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (unit.template.isChampion) HextechGoldBright else ParchmentWhite,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                if (portraitRes != null) {
+                    Image(
+                        painter = painterResource(id = portraitRes),
+                        contentDescription = unit.template.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                unit.template.type == CardType.LANDMARK -> Icons.Default.HourglassBottom
+                                unit.template.isChampion -> Icons.Default.Star
+                                else -> Icons.Default.SportsKabaddi
+                            },
+                            contentDescription = unit.template.name,
+                            tint = if (unit.template.isChampion) HextechGoldBright else regionColor,
+                            modifier = Modifier.size(tileWidth * 0.42f)
+                        )
+                    }
+                }
+
+                // Dark bottom vignette so corner ATK/HP numbers & keyword strip stay sharp
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.25f),
+                                    Color.Black.copy(alpha = 0.72f)
+                                )
+                            )
+                        )
                 )
-                if (unit.isLeveledUp) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = "Leveled Up",
-                        tint = HextechGoldBright,
-                        modifier = Modifier.size(13.dp)
+            }
+
+            // Top-right Champion Level Up Star or Countdown
+            if (unit.isLeveledUp) {
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = "Leveled Up",
+                    tint = HextechGoldBright,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(tileWidth * 0.06f)
+                        .size(tileWidth * 0.22f)
+                )
+            } else if (unit.template.type == CardType.LANDMARK) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(ObsidianSurface.copy(alpha = 0.85f))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "${unit.countdownRemaining}",
+                        fontSize = statFontSize,
+                        fontWeight = FontWeight.Bold,
+                        color = HextechGoldBright
                     )
                 }
             }
 
-            // Status / Keyword Icon Strip
+            // Center Keyword / Status Icon Strip (compact symbols only, no description text)
+            val iconSize = (tileWidth * 0.21f).coerceIn(11.dp, 18.dp)
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(top = tileHeight * 0.16f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(ObsidianBg.copy(alpha = 0.65f))
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (unit.hasBarrier) {
-                    Icon(Icons.Default.Shield, "Barrier", tint = HextechGoldBright, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Default.Shield, "Barrier", tint = HextechGoldBright, modifier = Modifier.size(iconSize))
                 }
                 if (unit.hasSpellShield) {
-                    Icon(Icons.Default.AutoFixHigh, "SpellShield", tint = EpicViolet, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Default.AutoFixHigh, "SpellShield", tint = EpicViolet, modifier = Modifier.size(iconSize))
                 }
                 if (unit.isFrostbitten) {
-                    Icon(Icons.Default.AcUnit, "Frostbitten", tint = ManaBlue, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Default.AcUnit, "Frostbitten", tint = ManaBlue, modifier = Modifier.size(iconSize))
                 }
                 if (unit.isStunned) {
-                    Icon(Icons.Default.FlashOn, "Stunned", tint = CrimsonNexus, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Default.FlashOn, "Stunned", tint = CrimsonNexus, modifier = Modifier.size(iconSize))
                 }
-                val topKw = unit.keywords.firstOrNull { it != Keyword.BARRIER && it != Keyword.SPELLSHIELD && it != Keyword.STUN }
-                if (topKw != null) {
+                if (unit.keywords.contains(Keyword.QUICK_ATTACK) || unit.keywords.contains(Keyword.DOUBLE_ATTACK)) {
+                    Icon(Icons.Default.Bolt, "Quick Attack", tint = LegendaryAmber, modifier = Modifier.size(iconSize))
+                }
+                if (unit.keywords.contains(Keyword.OVERWHELM)) {
+                    Icon(Icons.Default.Whatshot, "Overwhelm", tint = CrimsonNexus, modifier = Modifier.size(iconSize))
+                }
+                if (unit.keywords.contains(Keyword.ELUSIVE)) {
+                    Icon(Icons.Default.VisibilityOff, "Elusive", tint = ArcaneCyan, modifier = Modifier.size(iconSize))
+                }
+                if (unit.keywords.contains(Keyword.TOUGH) || unit.keywords.contains(Keyword.REGENERATION)) {
+                    Icon(Icons.Default.Shield, "Tough/Regen", tint = EmeraldHeal, modifier = Modifier.size(iconSize))
+                }
+            }
+
+            // Bottom-Left Power (Gold) & Bottom-Right Health (Red)
+            if (unit.template.type != CardType.LANDMARK) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(tileWidth * 0.05f)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(LegendaryAmber)
+                        .border(0.8.dp, ObsidianBg, RoundedCornerShape(5.dp))
+                        .padding(horizontal = tileWidth * 0.08f, vertical = 1.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        text = topKw.displayName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ArcaneCyan,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = "${unit.strikePower}",
+                        fontSize = statFontSize,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (unit.isFrostbitten) ManaBlue else ObsidianBg
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(tileWidth * 0.05f)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(CrimsonNexus)
+                        .border(0.8.dp, ObsidianBg, RoundedCornerShape(5.dp))
+                        .padding(horizontal = tileWidth * 0.08f, vertical = 1.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "${unit.health}",
+                        fontSize = statFontSize,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (unit.health < unit.maxHealth) HextechGoldBright else ParchmentWhite
                     )
                 }
             }
 
-            if (isAttacking) {
-                Text(
-                    text = "ATTACKING",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = LegendaryAmber
-                )
-            } else if (isBlockingLabel != null) {
-                Text(
-                    text = isBlockingLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = EmeraldHeal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            } else if (unit.template.type == CardType.LANDMARK) {
-                Text(
-                    text = "Countdown ${unit.countdownRemaining}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = HextechGoldBright
-                )
-            }
-
-            if (unit.template.type != CardType.LANDMARK) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+            // Floating Damage Impact Pill (top-center, clears bottom ATK/HP stats)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = damageDelta > 0,
+                enter = fadeIn(tween(120)),
+                exit = fadeOut(tween(240)),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = tileHeight * 0.04f)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = CrimsonNexus,
+                    border = BorderStroke(1.dp, ParchmentWhite)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = LegendaryAmber.copy(alpha = 0.25f)
-                    ) {
-                        Text(
-                            text = "${unit.strikePower}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (unit.isFrostbitten) ManaBlue else ParchmentWhite,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = CrimsonNexus.copy(alpha = 0.25f)
-                    ) {
-                        Text(
-                            text = "${unit.health}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (unit.health < unit.maxHealth) LegendaryAmber else ParchmentWhite,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                    Text(
+                        text = "-$damageDelta",
+                        fontSize = (statFontSize.value * 0.85f).coerceAtLeast(10f).sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = ParchmentWhite,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
                 }
             }
         }

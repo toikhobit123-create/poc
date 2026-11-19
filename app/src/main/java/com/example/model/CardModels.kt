@@ -114,6 +114,7 @@ data class HandCardInstance(
     val bonusHealth: Int = 0,
     val extraKeywords: Set<Keyword> = emptySet(),
     val isFleeting: Boolean = false,
+    val isCreated: Boolean = false,
     val hasChimeBoon: Boolean = false,
     val hasPortalBoon: Boolean = false,
     val hasPuffcapTrap: Int = 0,

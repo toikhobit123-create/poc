@@ -59,9 +59,11 @@ jobs:
             --no-daemon \
             --no-configuration-cache \
             --no-build-cache \
-            -Pkotlin.compiler.execution.strategy=daemon \
+            --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            -Pksp.incremental=false \
             -Djava.awt.headless=true \
-            -Dorg.gradle.jvmargs="-Xmx3g -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
+            -Dorg.gradle.jvmargs="-Xmx4g -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
             --stacktrace
 
       - name: Run unit tests
@@ -70,9 +72,11 @@ jobs:
             --no-daemon \
             --no-configuration-cache \
             --no-build-cache \
-            -Pkotlin.compiler.execution.strategy=daemon \
+            --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            -Pksp.incremental=false \
             -Djava.awt.headless=true \
-            -Dorg.gradle.jvmargs="-Xmx3g -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
+            -Dorg.gradle.jvmargs="-Xmx4g -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
             --stacktrace
 
       - name: Upload Debug APK Artifact
@@ -95,9 +99,11 @@ jobs:
               --no-daemon \
               --no-configuration-cache \
               --no-build-cache \
-              -Pkotlin.compiler.execution.strategy=daemon \
+              --max-workers=2 \
+              -Pkotlin.compiler.execution.strategy=in-process \
+              -Pksp.incremental=false \
               -Djava.awt.headless=true \
-              -Dorg.gradle.jvmargs="-Xmx3g -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
+              -Dorg.gradle.jvmargs="-Xmx4g -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
               --stacktrace
           else
             echo "Release signing secrets not set; skipping release APK build."

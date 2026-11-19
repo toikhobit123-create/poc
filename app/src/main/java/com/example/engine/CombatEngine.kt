@@ -86,6 +86,9 @@ object CombatEngine {
             initialLog.add("Foe Power [${node.enemyPowerTitle}]: ${node.enemyPowerDescription}")
         }
 
+        val effectiveEnemyMaxHp = node.enemyMaxHp + (if (node.enemyPowerTitle == "Stone Ward") 5 else 0)
+        val initialEnemyHallowed = if (node.enemyPowerTitle == "Undying Terror") 2 else 0
+
         var state = CombatState(
             encounterNode = node,
             adventure = adventure,
@@ -97,8 +100,8 @@ object CombatEngine {
             round = 1,
             playerNexusHp = runState.currentNexusHp,
             playerMaxHp = runState.maxNexusHp,
-            enemyNexusHp = node.enemyMaxHp,
-            enemyMaxHp = node.enemyMaxHp,
+            enemyNexusHp = effectiveEnemyMaxHp,
+            enemyMaxHp = effectiveEnemyMaxHp,
             playerMana = startingMana,
             playerMaxMana = startingMana,
             playerSpellMana = startingSpellMana,
@@ -107,6 +110,7 @@ object CombatEngine {
             enemySpellMana = 0,
             playerHasAttackToken = true,
             enemyHasAttackToken = false,
+            enemyHallowedStacks = initialEnemyHallowed,
             phase = CombatPhase.MAIN_ACTION_PHASE,
             priorityHolder = PriorityHolder.PLAYER,
             consecutivePasses = 0,
@@ -197,26 +201,58 @@ object CombatEngine {
                 }
             }
             "champ_garen" -> {
-                if (s.starLevel >= 6) {
+                if (s.starLevel >= 6 || s.playerBoard.any { it.template.id == "card_garen" && it.isLeveledUp }) {
                     s = s.copy(playerHasAttackToken = true)
+                    if (!isGameStart && s.playerBoard.any { it.template.id == "card_garen" && it.isLeveledUp }) {
+                        logs.add("Leveled Garen triggered Rally!")
+                    }
                 }
             }
             "champ_ashe" -> {
                 if (s.starLevel >= 1 && s.enemyBoard.isNotEmpty()) {
                     if (s.starLevel >= 6) {
-                        s = s.copy(enemyBoard = s.enemyBoard.map { it.copy(isFrostbitten = true) })
+                        val newlyFrostbitten = s.enemyBoard.count { !it.isFrostbitten }
+                        s = s.copy(
+                            enemyBoard = s.enemyBoard.map { it.copy(isFrostbitten = true) },
+                            enemiesFrostbittenCount = s.enemiesFrostbittenCount + newlyFrostbitten
+                        )
                         logs.add("Ashe 6★ Frostbit ALL enemies!")
                     } else {
                         val strongest = s.enemyBoard.maxByOrNull { it.effectivePower }
                         if (strongest != null) {
-                            s = s.copy(enemyBoard = s.enemyBoard.map {
-                                if (it.instanceId == strongest.instanceId) it.copy(isFrostbitten = true) else it
-                            })
+                            s = s.copy(
+                                enemyBoard = s.enemyBoard.map {
+                                    if (it.instanceId == strongest.instanceId) it.copy(isFrostbitten = true) else it
+                                },
+                                enemiesFrostbittenCount = s.enemiesFrostbittenCount + 1
+                            )
                             logs.add("Ashe Star Power Frostbit ${strongest.template.name}.")
                         }
                     }
                 }
+                if (s.starLevel >= 3 && s.playerBoard.isNotEmpty()) {
+                    val topAlly = s.playerBoard.maxByOrNull { it.effectivePower }!!
+                    s = s.copy(playerBoard = s.playerBoard.map {
+                        if (it.instanceId == topAlly.instanceId) {
+                            it.copy(power = it.power + 2, health = it.health + 2, maxHealth = it.maxHealth + 2)
+                        } else it
+                    })
+                    logs.add("Ashe 3★ granted ${topAlly.template.name} +2|+2!")
+                }
             }
+        }
+
+        // Leveled Garen works even when playing another champion via Reinforcement
+        if (s.championId != "champ_garen" && s.playerBoard.any { it.template.id == "card_garen" && it.isLeveledUp }) {
+            s = s.copy(playerHasAttackToken = true)
+            logs.add("Leveled Garen triggered Rally!")
+        }
+
+        // Ballistic Bot Round Start: Create a Fleeting Ignition
+        if (!isGameStart && s.playerBoard.any { it.template.id == "card_ballistic_bot" } && s.playerHand.size < 10) {
+            val ignition = createHandInstance(CardCatalog.getCard("card_ignition"), isFleeting = true)
+            s = s.copy(playerHand = s.playerHand + ignition)
+            logs.add("Ballistic Bot created Fleeting Ignition.")
         }
 
         // Relic: Archangel's Staff (if leveled or on board)
@@ -245,6 +281,25 @@ object CombatEngine {
         // Boss / Node Round Start Powers
         if (!isGameStart) {
             when (s.encounterNode.enemyPowerTitle) {
+                "For Demacia!" -> {
+                    if (s.round % 2 == 0 && s.enemyBoard.isNotEmpty()) {
+                        s = s.copy(enemyBoard = s.enemyBoard.map {
+                            it.copy(power = it.power + 1, health = it.health + 1, maxHealth = it.maxHealth + 1)
+                        })
+                        logs.add("For Demacia! Foe's units gained +1|+1.")
+                    }
+                }
+                "Tempest Training" -> {
+                    if (s.round % 2 == 0 && s.playerBoard.isNotEmpty()) {
+                        val weakest = s.playerBoard.minByOrNull { it.effectivePower }!!
+                        s = s.copy(playerBoard = s.playerBoard.map {
+                            if (it.instanceId == weakest.instanceId) {
+                                it.copy(isStunned = true, keywords = it.keywords + Keyword.STUN)
+                            } else it
+                        })
+                        logs.add("Tempest Training stunned your ${weakest.template.name}!")
+                    }
+                }
                 "Prismatic Shield" -> {
                     val topEnemy = s.enemyBoard.maxByOrNull { it.effectivePower }
                     if (topEnemy != null) {
@@ -271,7 +326,12 @@ object CombatEngine {
                         it.copy(power = it.power + 1, health = it.health + 1, maxHealth = it.maxHealth + 1)
                     })
                     if (s.round % 2 == 0 && s.playerHand.size < 10) {
-                        s = s.copy(playerHand = s.playerHand + createHandInstance(CardCatalog.getCard("card_curse_suppression")))
+                        s = s.copy(
+                            playerHand = s.playerHand + createHandInstance(
+                                CardCatalog.getCard("card_curse_suppression"),
+                                isCreated = false
+                            )
+                        )
                         logs.add("Aurelion Sol afflicted your hand with Suppression Curse!")
                     }
                 }
@@ -306,12 +366,17 @@ object CombatEngine {
         return checkGameOver(s)
     }
 
-    private fun createHandInstance(template: CardTemplate, isFleeting: Boolean = false): HandCardInstance {
+    private fun createHandInstance(
+        template: CardTemplate,
+        isFleeting: Boolean = false,
+        isCreated: Boolean = true
+    ): HandCardInstance {
         return HandCardInstance(
             instanceId = "hc_${nextId()}",
             template = template,
             effectiveCost = template.cost,
-            isFleeting = isFleeting || template.keywords.contains(Keyword.FLEETING)
+            isFleeting = isFleeting || template.keywords.contains(Keyword.FLEETING),
+            isCreated = isCreated
         )
     }
 
@@ -405,9 +470,12 @@ object CombatEngine {
                 s = summonPlayerUnit(s, card, logs)
                 if (card.template.effectType == CardEffectType.FROSTBITE_TARGET && s.enemyBoard.isNotEmpty()) {
                     val target = s.enemyBoard.maxByOrNull { it.effectivePower }!!
-                    s = s.copy(enemyBoard = s.enemyBoard.map {
-                        if (it.instanceId == target.instanceId) it.copy(isFrostbitten = true) else it
-                    })
+                    s = s.copy(
+                        enemyBoard = s.enemyBoard.map {
+                            if (it.instanceId == target.instanceId) it.copy(isFrostbitten = true) else it
+                        },
+                        enemiesFrostbittenCount = s.enemiesFrostbittenCount + 1
+                    )
                     logs.add("${card.template.name} Frostbit ${target.template.name}.")
                 }
                 if (card.template.id == "card_brightsteel_protector" && s.playerBoard.isNotEmpty()) {
@@ -465,16 +533,17 @@ object CombatEngine {
                     logs.add("Lux 3★ Triggered: Rally & created Final Spark!")
                 }
 
+                val spellDmgBonus = s.equippedRelics.sumOf { it.spellSkillDamageBonus }
                 // Rule 9.3: Burst/Focus resolve immediately and KEEP priority; Fast/Slow enter stack and pass priority
                 if (card.template.spellSpeed == SpellSpeed.BURST || card.template.spellSpeed == SpellSpeed.FOCUS) {
-                    s = resolveSingleSpellEffect(s, card.template, sourceIsPlayer = true, logs = logs)
+                    s = resolveSingleSpellEffect(s, card.template, sourceIsPlayer = true, bonusDmg = spellDmgBonus, logs = logs)
                     nextPriority = PriorityHolder.PLAYER
                 } else {
                     val entry = SpellStackEntry(
                         id = "st_${nextId()}",
                         sourceIsPlayer = true,
                         card = card.template,
-                        damageBonus = s.equippedRelics.sumOf { it.spellSkillDamageBonus }
+                        damageBonus = spellDmgBonus
                     )
                     s = s.copy(spellStack = s.spellStack + entry)
                     nextLastCaster = PriorityHolder.PLAYER
@@ -657,7 +726,12 @@ object CombatEngine {
         } else {
             s.phase
         }
-        val nextPriority = s.lastStackCaster?.opponent() ?: s.priorityHolder
+        val nextPriority = when (returnPhase) {
+            CombatPhase.COMBAT_DECLARE_ATTACK_PHASE -> PriorityHolder.PLAYER
+            CombatPhase.COMBAT_DECLARE_BLOCK_PHASE ->
+                if (s.playerInitiatedCombat) PriorityHolder.ENEMY else PriorityHolder.PLAYER
+            else -> s.lastStackCaster?.opponent() ?: s.priorityHolder
+        }
         s = s.copy(
             spellStack = emptyList(),
             phase = returnPhase,
@@ -701,6 +775,15 @@ object CombatEngine {
                     logs.add("Foe's ${card.name} dealt $dmg damage.")
                 }
             }
+            CardEffectType.DEAL_DAMAGE_NEXUS -> {
+                if (sourceIsPlayer) {
+                    s = dealDamageToEnemyNexus(s, dmg, logs)
+                    logs.add("${card.name} dealt $dmg to Enemy Nexus.")
+                } else {
+                    s = dealDamageToPlayerNexus(s, dmg, logs)
+                    logs.add("Foe's ${card.name} dealt $dmg to your Nexus.")
+                }
+            }
             CardEffectType.DEAL_DAMAGE_UNIT_AND_NEXUS -> {
                 if (sourceIsPlayer) {
                     s = dealDamageToEnemyNexus(s, dmg, logs)
@@ -727,13 +810,24 @@ object CombatEngine {
                     })
                     logs.add("Foe's ${card.name} Stunned ${target.template.name}.")
                 }
+                if (card.id == "card_concussive_palm") {
+                    val tailTmpl = CardCatalog.getCard("card_tail_of_the_dragon")
+                    if (sourceIsPlayer && s.playerBoard.size < 6) {
+                        s = summonPlayerUnit(s, createHandInstance(tailTmpl), logs)
+                    } else if (!sourceIsPlayer && s.enemyBoard.size < 6) {
+                        s = summonEnemyUnitFromPool(s, tailTmpl, spendMana = 0, logs = logs)
+                    }
+                }
             }
             CardEffectType.FROSTBITE_TARGET -> {
                 if (sourceIsPlayer && s.enemyBoard.isNotEmpty()) {
                     val target = s.enemyBoard.maxByOrNull { it.effectivePower }!!
-                    s = s.copy(enemyBoard = s.enemyBoard.map {
-                        if (it.instanceId == target.instanceId) it.copy(isFrostbitten = true) else it
-                    })
+                    s = s.copy(
+                        enemyBoard = s.enemyBoard.map {
+                            if (it.instanceId == target.instanceId) it.copy(isFrostbitten = true) else it
+                        },
+                        enemiesFrostbittenCount = s.enemiesFrostbittenCount + 1
+                    )
                     logs.add("${card.name} Frostbit ${target.template.name}.")
                 } else if (!sourceIsPlayer && s.playerBoard.isNotEmpty()) {
                     val target = s.playerBoard.maxByOrNull { it.effectivePower }!!
@@ -841,6 +935,11 @@ object CombatEngine {
             }
             else -> {}
         }
+        s = if (sourceIsPlayer) {
+            s.copy(playerGraveyard = s.playerGraveyard + card)
+        } else {
+            s.copy(enemyGraveyard = s.enemyGraveyard + card)
+        }
         return s
     }
 
@@ -911,9 +1010,12 @@ object CombatEngine {
             }
             if (atk.template.id == "card_ashe" && s.enemyBoard.isNotEmpty()) {
                 val target = s.enemyBoard.maxByOrNull { it.effectivePower }!!
-                s = s.copy(enemyBoard = s.enemyBoard.map {
-                    if (it.instanceId == target.instanceId) it.copy(isFrostbitten = true) else it
-                })
+                s = s.copy(
+                    enemyBoard = s.enemyBoard.map {
+                        if (it.instanceId == target.instanceId) it.copy(isFrostbitten = true) else it
+                    },
+                    enemiesFrostbittenCount = s.enemiesFrostbittenCount + 1
+                )
                 logs.add("Ashe Attack: Frostbit ${target.template.name}.")
             }
         }
@@ -986,11 +1088,17 @@ object CombatEngine {
     ): CombatState {
         var s = state
         val attackers = s.attackingUnitIds.toList()
+        val playerFrostbiteAura = if (s.championId == "champ_ashe" && s.starLevel >= 2) {
+            s.enemyBoard.count { it.isFrostbitten }
+        } else 0
 
         for (atkId in attackers) {
             val atk = (if (playerIsAttacking) s.playerBoard else s.enemyBoard).find { it.instanceId == atkId } ?: continue
             val blkId = s.blockPairings[atkId]
             val blk = blkId?.let { id -> (if (playerIsAttacking) s.enemyBoard else s.playerBoard).find { it.instanceId == id } }
+
+            val atkStrikePower = atk.strikePower + (if (playerIsAttacking) playerFrostbiteAura else 0)
+            val blkStrikePower = (blk?.strikePower ?: 0) + (if (!playerIsAttacking && blk != null) playerFrostbiteAura else 0)
 
             // Impact damage on attack strike
             if (atk.impactStacks > 0) {
@@ -1004,7 +1112,7 @@ object CombatEngine {
 
             if (blk == null) {
                 // Unblocked strike directly to Nexus
-                val dmg = atk.strikePower
+                val dmg = atkStrikePower
                 if (dmg > 0) {
                     if (playerIsAttacking) {
                         s = dealDamageToEnemyNexus(s, dmg, logs)
@@ -1026,7 +1134,7 @@ object CombatEngine {
                 val strikesCount = if (atk.keywords.contains(Keyword.DOUBLE_ATTACK)) 2 else 1
 
                 if (hasFirstStrike) {
-                    val atkDmg = atk.strikePower
+                    val atkDmg = atkStrikePower
                     val blkHpBefore = blk.health
                     s = damageUnit(s, blk.instanceId, isEnemy = playerIsAttacking, damage = atkDmg, logs = logs)
                     if (atk.keywords.contains(Keyword.LIFESTEAL) && playerIsAttacking && !blk.hasBarrier) {
@@ -1040,7 +1148,7 @@ object CombatEngine {
 
                     val survivingBlk = (if (playerIsAttacking) s.enemyBoard else s.playerBoard).find { it.instanceId == blk.instanceId }
                     if (survivingBlk != null && !survivingBlk.isStunned) {
-                        val blkDmg = survivingBlk.strikePower
+                        val blkDmg = survivingBlk.strikePower + (if (!playerIsAttacking) playerFrostbiteAura else 0)
                         if (strikesCount == 2) {
                             s = damageUnit(s, survivingBlk.instanceId, isEnemy = playerIsAttacking, damage = atkDmg, logs = logs)
                         }
@@ -1052,8 +1160,8 @@ object CombatEngine {
                         }
                     }
                 } else {
-                    val atkDmg = atk.strikePower
-                    val blkDmg = blk.strikePower
+                    val atkDmg = atkStrikePower
+                    val blkDmg = blkStrikePower
                     val blkHpBefore = blk.health
 
                     s = damageUnit(s, blk.instanceId, isEnemy = playerIsAttacking, damage = atkDmg, logs = logs)
@@ -1067,6 +1175,19 @@ object CombatEngine {
                         if (playerIsAttacking) s = dealDamageToEnemyNexus(s, excess, logs)
                         else s = dealDamageToPlayerNexus(s, excess, logs)
                     }
+                }
+            }
+
+            // Enemy Node Power: Living Shadow (Zed Mid-Boss) — Attacking units gain +1|+1 on strike
+            if (!playerIsAttacking && s.encounterNode.enemyPowerTitle == "Living Shadow") {
+                val survivingAtk = s.enemyBoard.find { it.instanceId == atkId }
+                if (survivingAtk != null && !survivingAtk.keywords.contains(Keyword.EPHEMERAL)) {
+                    s = s.copy(enemyBoard = s.enemyBoard.map { u ->
+                        if (u.instanceId == atkId) {
+                            u.copy(power = u.power + 1, health = u.health + 1, maxHealth = u.maxHealth + 1)
+                        } else u
+                    })
+                    logs.add("Living Shadow empowered ${survivingAtk.template.name} (+1|+1)!")
                 }
             }
 
@@ -1086,6 +1207,10 @@ object CombatEngine {
                     u.copy(power = u.power + bonus, health = u.health + bonus, maxHealth = u.maxHealth + bonus)
                 } else u
             })
+            if (s.starLevel >= 3 && attackers.isNotEmpty() && s.playerHand.size < 10) {
+                s = s.copy(playerHand = s.playerHand + createHandInstance(CardCatalog.getCard("card_single_combat"), isFleeting = true))
+                logs.add("Garen 3★ created Fleeting Single Combat!")
+            }
         }
 
         return checkGameOver(s)
@@ -1175,7 +1300,11 @@ object CombatEngine {
         }
 
         val updated = board.filterNot { it.instanceId == unitId }
-        s = if (isEnemy) s.copy(enemyBoard = updated) else s.copy(playerBoard = updated)
+        s = if (isEnemy) {
+            s.copy(enemyBoard = updated, enemyGraveyard = s.enemyGraveyard + target.template)
+        } else {
+            s.copy(playerBoard = updated, playerGraveyard = s.playerGraveyard + target.template)
+        }
         logs.add("${target.template.name} was slain.")
 
         if (target.keywords.contains(Keyword.HALLOWED)) {
@@ -1189,19 +1318,23 @@ object CombatEngine {
     private fun stunEnemyUnit(state: CombatState, unitId: String, logs: MutableList<String>): CombatState {
         var s = state
         val target = s.enemyBoard.find { it.instanceId == unitId } ?: return s
-        s = s.copy(enemyBoard = s.enemyBoard.map {
-            if (it.instanceId == unitId) it.copy(isStunned = true, keywords = it.keywords + Keyword.STUN) else it
-        })
+        s = s.copy(
+            enemyBoard = s.enemyBoard.map {
+                if (it.instanceId == unitId) it.copy(isStunned = true, keywords = it.keywords + Keyword.STUN) else it
+            },
+            enemiesStunnedCount = s.enemiesStunnedCount + 1
+        )
         logs.add("Stunned ${target.template.name}.")
 
+        val skillBonus = s.equippedRelics.sumOf { it.spellSkillDamageBonus }
         val yasuos = s.playerBoard.filter { it.template.id == "card_yasuo" }
         yasuos.forEach { yasuo ->
-            val dmg = if (yasuo.isLeveledUp) yasuo.effectivePower else 2
+            val dmg = (if (yasuo.isLeveledUp) yasuo.effectivePower else 2) + skillBonus
             s = damageUnit(s, unitId, isEnemy = true, damage = dmg, logs = logs)
             logs.add("Yasuo struck stunned ${target.template.name} for $dmg!")
         }
         if (s.championId == "champ_yasuo" && s.starLevel >= 6) {
-            s = damageUnit(s, unitId, isEnemy = true, damage = 5, logs = logs)
+            s = damageUnit(s, unitId, isEnemy = true, damage = 5 + skillBonus, logs = logs)
         }
         s = s.copy(playerBoard = s.playerBoard.map {
             if (it.template.id == "card_fae_blader") it.copy(power = it.power + 2) else it
@@ -1279,7 +1412,17 @@ object CombatEngine {
         if (state.adventure.starRating >= 3.0f) {
             bonusPow += 1; bonusHp += 1
         }
-        if (state.encounterNode.enemyPowerTitle == "Volatile Munitions") extraKw.add(Keyword.IMPACT)
+        when (state.encounterNode.enemyPowerTitle) {
+            "Volatile Munitions" -> extraKw.add(Keyword.IMPACT)
+            "Unseen Path" -> if (chosen.keywords.contains(Keyword.ELUSIVE)) bonusPow += 1
+            "Glorious Evolution" -> {
+                bonusPow += 1; bonusHp += 1
+                extraKw.add(Keyword.sharablePool.random())
+            }
+            "Blazing Dawn" -> {
+                bonusPow += 1; bonusHp += 1
+            }
+        }
 
         val enemyUnit = UnitOnBoard(
             instanceId = "eu_${nextId()}",
@@ -1378,17 +1521,20 @@ object CombatEngine {
     internal fun checkChampionLevelUps(state: CombatState, logs: MutableList<String>): CombatState {
         var s = state
         var rallyTriggered = false
+        val newlyLeveledIds = mutableListOf<String>()
         val updatedBoard = s.playerBoard.map { u ->
             if (u.template.isChampion && !u.isLeveledUp) {
                 val shouldLevel = when (u.template.id) {
                     "card_jinx" -> s.playerHand.isEmpty() || s.playerSpellsPlayedThisRound >= 2
                     "card_lux" -> s.playerSpellsManaSpent >= 6
-                    "card_yasuo" -> s.round >= 3
+                    "card_yasuo" -> s.enemiesStunnedCount >= 3 || s.round >= 3
+                    "card_ashe" -> s.enemiesFrostbittenCount >= 3 || s.round >= 3
                     "card_garen" -> s.round >= 3
                     else -> s.round >= 3
                 }
                 if (shouldLevel) {
                     logs.add("★ ${u.template.name} LEVELED UP! (+${u.template.levelUpPowerBonus}|+${u.template.levelUpHealthBonus})")
+                    newlyLeveledIds.add(u.template.id)
                     if (s.equippedRelics.any { it.id == "relic_crownguard" }) rallyTriggered = true
                     u.copy(
                         isLeveledUp = true,
@@ -1399,11 +1545,39 @@ object CombatEngine {
                 } else u
             } else u
         }
+        s = s.copy(playerBoard = updatedBoard)
         if (rallyTriggered) {
             s = s.copy(playerHasAttackToken = true)
             logs.add("Crownguard Inheritance triggered Rally!")
         }
-        return s.copy(playerBoard = updatedBoard)
+        for (champId in newlyLeveledIds) {
+            when (champId) {
+                "card_jinx" -> {
+                    s = dealDamageToEnemyNexus(s, 4, logs)
+                    if (s.playerHand.size < 10) {
+                        s = s.copy(
+                            playerHand = s.playerHand + createHandInstance(
+                                CardCatalog.getCard("card_super_mega_rocket"),
+                                isFleeting = true
+                            )
+                        )
+                    }
+                    logs.add("Jinx Level Up blasted 4 Nexus damage & created Super Mega Death Rocket!")
+                }
+                "card_lux" -> {
+                    if (s.playerHand.size < 10) {
+                        s = s.copy(
+                            playerHand = s.playerHand + createHandInstance(
+                                CardCatalog.getCard("card_final_spark"),
+                                isFleeting = true
+                            )
+                        )
+                    }
+                    logs.add("Lux Level Up created 0-cost Final Spark!")
+                }
+            }
+        }
+        return s
     }
 
     internal fun checkGameOver(state: CombatState): CombatState {

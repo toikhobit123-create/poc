@@ -176,40 +176,98 @@ fun PowerDraftScreen(
         run = run,
         modifier = modifier
     ) {
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(powers, key = { it.id }) { power ->
-                val accent = rarityColor(power.rarity)
-                Surface(
+        BoxWithConstraints(modifier = Modifier.weight(1f)) {
+            if (maxWidth >= 560.dp) {
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("draft_power_${power.id}")
-                        .clickable { onPick(power) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = ObsidianCard,
-                    border = BorderStroke(1.5.dp, accent)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.Bolt, contentDescription = power.name, tint = accent, modifier = Modifier.size(28.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${power.name} (${power.rarity.displayName})",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = accent
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = power.description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ParchmentWhite
-                            )
+                    powers.forEach { power ->
+                        val accent = rarityColor(power.rarity)
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 160.dp)
+                                .minimumInteractiveComponentSize()
+                                .testTag("draft_power_${power.id}")
+                                .clickable { onPick(power) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = ObsidianCard,
+                            border = BorderStroke(1.5.dp, accent)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Bolt,
+                                        contentDescription = power.name,
+                                        tint = accent,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Text(
+                                        text = power.rarity.displayName,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = accent
+                                    )
+                                }
+                                Text(
+                                    text = power.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = accent
+                                )
+                                Text(
+                                    text = power.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = ParchmentWhite
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(powers, key = { it.id }) { power ->
+                        val accent = rarityColor(power.rarity)
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .minimumInteractiveComponentSize()
+                                .testTag("draft_power_${power.id}")
+                                .clickable { onPick(power) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = ObsidianCard,
+                            border = BorderStroke(1.5.dp, accent)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Default.Bolt, contentDescription = power.name, tint = accent, modifier = Modifier.size(28.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "${power.name} (${power.rarity.displayName})",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = accent
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = power.description,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = ParchmentWhite
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -319,25 +377,64 @@ fun ShopScreen(
 
             item {
                 Text("Cards for Sale", style = MaterialTheme.typography.titleSmall, color = HextechGoldBright)
-            }
-            itemsIndexed(uiState.shopCards) { idx, cardOffer ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    CardTile(
-                        template = cardOffer.card,
-                        attachedItems = listOf(cardOffer.attachedItem),
-                        playable = !cardOffer.purchased && run.gold >= cardOffer.goldCost
-                    )
-                    Button(
-                        enabled = !cardOffer.purchased && run.gold >= cardOffer.goldCost,
-                        onClick = { onBuyCard(idx) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("buy_shop_card_$idx"),
-                        colors = ButtonDefaults.buttonColors(containerColor = HextechGold, contentColor = ObsidianBg)
-                    ) {
-                        Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (cardOffer.purchased) "Purchased" else "Buy Card (${cardOffer.goldCost}g)")
+                Spacer(modifier = Modifier.height(6.dp))
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    if (maxWidth >= 560.dp) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            uiState.shopCards.forEachIndexed { idx, cardOffer ->
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    CardTile(
+                                        template = cardOffer.card,
+                                        attachedItems = listOf(cardOffer.attachedItem),
+                                        playable = !cardOffer.purchased && run.gold >= cardOffer.goldCost
+                                    )
+                                    Button(
+                                        enabled = !cardOffer.purchased && run.gold >= cardOffer.goldCost,
+                                        onClick = { onBuyCard(idx) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .testTag("buy_shop_card_$idx"),
+                                        colors = ButtonDefaults.buttonColors(containerColor = HextechGold, contentColor = ObsidianBg)
+                                    ) {
+                                        Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(if (cardOffer.purchased) "Purchased" else "${cardOffer.goldCost}g")
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            uiState.shopCards.forEachIndexed { idx, cardOffer ->
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    CardTile(
+                                        template = cardOffer.card,
+                                        attachedItems = listOf(cardOffer.attachedItem),
+                                        playable = !cardOffer.purchased && run.gold >= cardOffer.goldCost
+                                    )
+                                    Button(
+                                        enabled = !cardOffer.purchased && run.gold >= cardOffer.goldCost,
+                                        onClick = { onBuyCard(idx) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .testTag("buy_shop_card_$idx"),
+                                        colors = ButtonDefaults.buttonColors(containerColor = HextechGold, contentColor = ObsidianBg)
+                                    ) {
+                                        Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(if (cardOffer.purchased) "Purchased" else "Buy Card (${cardOffer.goldCost}g)")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -373,7 +470,7 @@ fun HealerScreen(
     onCutCard: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BackHandler(onBack = onHeal)
+    BackHandler { /* Choose Heal or Cut Card */ }
     var showCutDialog by remember { mutableStateOf(false) }
 
     EncounterFrame(
@@ -382,56 +479,124 @@ fun HealerScreen(
         run = run,
         modifier = modifier
     ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .minimumInteractiveComponentSize()
-                    .testTag("healer_restore_button")
-                    .clickable(onClick = onHeal),
-                shape = RoundedCornerShape(14.dp),
-                color = ObsidianCard,
-                border = BorderStroke(1.5.dp, EmeraldHeal)
-            ) {
+        BoxWithConstraints(modifier = Modifier.weight(1f)) {
+            if (maxWidth >= 560.dp) {
                 Row(
-                    modifier = Modifier.padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Favorite, contentDescription = "Heal", tint = EmeraldHeal, modifier = Modifier.size(30.dp))
-                    Column {
-                        Text("Restore 40% Nexus Health", style = MaterialTheme.typography.titleMedium, color = EmeraldHeal)
-                        Text(
-                            "Heal up to +${maxOf(6, (run.maxNexusHp * 0.4f).toInt())} HP (Current: ${run.currentNexusHp}/${run.maxNexusHp})",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MutedSilver
-                        )
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 140.dp)
+                            .minimumInteractiveComponentSize()
+                            .testTag("healer_restore_button")
+                            .clickable(onClick = onHeal),
+                        shape = RoundedCornerShape(14.dp),
+                        color = ObsidianCard,
+                        border = BorderStroke(1.5.dp, EmeraldHeal)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Favorite, contentDescription = "Heal", tint = EmeraldHeal, modifier = Modifier.size(30.dp))
+                            Column {
+                                Text("Restore 40% Nexus Health", style = MaterialTheme.typography.titleMedium, color = EmeraldHeal)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "Heal up to +${maxOf(6, (run.maxNexusHp * 0.4f).toInt())} HP (Current: ${run.currentNexusHp}/${run.maxNexusHp})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MutedSilver
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 140.dp)
+                            .minimumInteractiveComponentSize()
+                            .testTag("healer_cut_button")
+                            .clickable { showCutDialog = true },
+                        shape = RoundedCornerShape(14.dp),
+                        color = ObsidianCard,
+                        border = BorderStroke(1.5.dp, CrimsonNexus)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCut, contentDescription = "Cut Card", tint = CrimsonNexus, modifier = Modifier.size(30.dp))
+                            Column {
+                                Text("Cut a Card from Deck", style = MaterialTheme.typography.titleMedium, color = CrimsonNexus)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Improve draw consistency by removing 1 copy of a card.", style = MaterialTheme.typography.bodySmall, color = MutedSilver)
+                            }
+                        }
                     }
                 }
-            }
-
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .minimumInteractiveComponentSize()
-                    .testTag("healer_cut_button")
-                    .clickable { showCutDialog = true },
-                shape = RoundedCornerShape(14.dp),
-                color = ObsidianCard,
-                border = BorderStroke(1.5.dp, CrimsonNexus)
-            ) {
-                Row(
-                    modifier = Modifier.padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Icon(Icons.Default.ContentCut, contentDescription = "Cut Card", tint = CrimsonNexus, modifier = Modifier.size(30.dp))
-                    Column {
-                        Text("Cut a Card from Deck", style = MaterialTheme.typography.titleMedium, color = CrimsonNexus)
-                        Text("Improve draw consistency by removing 1 copy of a card.", style = MaterialTheme.typography.bodySmall, color = MutedSilver)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .minimumInteractiveComponentSize()
+                            .testTag("healer_restore_button")
+                            .clickable(onClick = onHeal),
+                        shape = RoundedCornerShape(14.dp),
+                        color = ObsidianCard,
+                        border = BorderStroke(1.5.dp, EmeraldHeal)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Favorite, contentDescription = "Heal", tint = EmeraldHeal, modifier = Modifier.size(30.dp))
+                            Column {
+                                Text("Restore 40% Nexus Health", style = MaterialTheme.typography.titleMedium, color = EmeraldHeal)
+                                Text(
+                                    "Heal up to +${maxOf(6, (run.maxNexusHp * 0.4f).toInt())} HP (Current: ${run.currentNexusHp}/${run.maxNexusHp})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MutedSilver
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .minimumInteractiveComponentSize()
+                            .testTag("healer_cut_button")
+                            .clickable { showCutDialog = true },
+                        shape = RoundedCornerShape(14.dp),
+                        color = ObsidianCard,
+                        border = BorderStroke(1.5.dp, CrimsonNexus)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCut, contentDescription = "Cut Card", tint = CrimsonNexus, modifier = Modifier.size(30.dp))
+                            Column {
+                                Text("Cut a Card from Deck", style = MaterialTheme.typography.titleMedium, color = CrimsonNexus)
+                                Text("Improve draw consistency by removing 1 copy of a card.", style = MaterialTheme.typography.bodySmall, color = MutedSilver)
+                            }
+                        }
                     }
                 }
             }
@@ -466,38 +631,82 @@ fun ReinforcementScreen(
         run = run,
         modifier = modifier
     ) {
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(packages, key = { it.championId }) { pkg ->
-                Surface(
+        BoxWithConstraints(modifier = Modifier.weight(1f)) {
+            if (maxWidth >= 560.dp) {
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("reinf_pkg_${pkg.championId}")
-                        .clickable { onPick(pkg) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = ObsidianCard,
-                    border = BorderStroke(1.5.dp, ArcaneCyan)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    packages.forEach { pkg ->
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 160.dp)
+                                .minimumInteractiveComponentSize()
+                                .testTag("reinf_pkg_${pkg.championId}")
+                                .clickable { onPick(pkg) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = ObsidianCard,
+                            border = BorderStroke(1.5.dp, ArcaneCyan)
                         ) {
-                            Icon(Icons.Default.GroupAdd, contentDescription = null, tint = ArcaneCyan)
-                            Text(pkg.title, style = MaterialTheme.typography.titleMedium, color = HextechGoldBright)
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.GroupAdd, contentDescription = null, tint = ArcaneCyan)
+                                    Text(pkg.title, style = MaterialTheme.typography.titleMedium, color = HextechGoldBright)
+                                }
+                                Text(pkg.subtitle, style = MaterialTheme.typography.bodySmall, color = MutedSilver)
+                                Text(
+                                    text = "Includes: ${pkg.cardIds.joinToString { CardCatalog.getCard(it).name }}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = ParchmentWhite
+                                )
+                            }
                         }
-                        Text(pkg.subtitle, style = MaterialTheme.typography.bodySmall, color = MutedSilver)
-                        Text(
-                            text = "Includes: ${pkg.cardIds.joinToString { CardCatalog.getCard(it).name }}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = ParchmentWhite
-                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(packages, key = { it.championId }) { pkg ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .minimumInteractiveComponentSize()
+                                .testTag("reinf_pkg_${pkg.championId}")
+                                .clickable { onPick(pkg) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = ObsidianCard,
+                            border = BorderStroke(1.5.dp, ArcaneCyan)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.GroupAdd, contentDescription = null, tint = ArcaneCyan)
+                                    Text(pkg.title, style = MaterialTheme.typography.titleMedium, color = HextechGoldBright)
+                                }
+                                Text(pkg.subtitle, style = MaterialTheme.typography.bodySmall, color = MutedSilver)
+                                Text(
+                                    text = "Includes: ${pkg.cardIds.joinToString { CardCatalog.getCard(it).name }}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = ParchmentWhite
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -574,22 +783,58 @@ fun NarrativeEventScreen(
         run = run,
         modifier = modifier
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            event.options.forEach { opt ->
-                Surface(
+        BoxWithConstraints(modifier = Modifier.weight(1f)) {
+            if (maxWidth >= 560.dp) {
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("event_opt_${opt.id}")
-                        .clickable { onChooseOption(opt.id) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = ObsidianCard,
-                    border = BorderStroke(1.5.dp, HextechGold)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(opt.title, style = MaterialTheme.typography.titleMedium, color = HextechGoldBright)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(opt.description, style = MaterialTheme.typography.bodyMedium, color = ParchmentWhite)
+                    event.options.forEach { opt ->
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 140.dp)
+                                .minimumInteractiveComponentSize()
+                                .testTag("event_opt_${opt.id}")
+                                .clickable { onChooseOption(opt.id) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = ObsidianCard,
+                            border = BorderStroke(1.5.dp, HextechGold)
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(opt.title, style = MaterialTheme.typography.titleMedium, color = HextechGoldBright)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(opt.description, style = MaterialTheme.typography.bodyMedium, color = ParchmentWhite)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    event.options.forEach { opt ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .minimumInteractiveComponentSize()
+                                .testTag("event_opt_${opt.id}")
+                                .clickable { onChooseOption(opt.id) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = ObsidianCard,
+                            border = BorderStroke(1.5.dp, HextechGold)
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(opt.title, style = MaterialTheme.typography.titleMedium, color = HextechGoldBright)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(opt.description, style = MaterialTheme.typography.bodyMedium, color = ParchmentWhite)
+                            }
+                        }
                     }
                 }
             }

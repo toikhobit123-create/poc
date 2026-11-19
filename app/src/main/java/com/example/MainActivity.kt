@@ -137,6 +137,8 @@ fun PathOfChampionsApp(viewModel: GameViewModel) {
                             onEnterAttack = viewModel::enterAttack,
                             onCancelAttack = viewModel::cancelAttack,
                             onToggleAttacker = viewModel::toggleAttacker,
+                            onDragBenchUnitToAttack = viewModel::dragBenchUnitToAttack,
+                            onRemoveAttacker = viewModel::removeAttacker,
                             onCommitAttack = viewModel::commitAttack,
                             onSelectEnemyAttackerForBlock = viewModel::selectEnemyAttackerForBlock,
                             onAssignBlocker = viewModel::assignBlocker,

@@ -20,10 +20,20 @@ object EnemyAIController {
         }
         val logs = state.combatLog.toMutableList()
 
+        if (state.spellStack.isNotEmpty()) {
+            return handleSpellStackResponse(state, logs)
+        }
+
         return when (state.phase) {
             CombatPhase.SPELL_STACK_PHASE -> handleSpellStackResponse(state, logs)
             CombatPhase.MAIN_ACTION_PHASE -> handleMainActionPhase(state, logs)
-            CombatPhase.COMBAT_DECLARE_BLOCK_PHASE -> handleBlockDeclaration(state, logs)
+            CombatPhase.COMBAT_DECLARE_BLOCK_PHASE -> {
+                if (state.playerInitiatedCombat) {
+                    handleBlockDeclaration(state, logs)
+                } else {
+                    state.copy(priorityHolder = PriorityHolder.PLAYER)
+                }
+            }
             CombatPhase.COMBAT_DECLARE_ATTACK_PHASE,
             CombatPhase.COMBAT_RESOLUTION_PHASE,
             CombatPhase.GAME_OVER -> state
@@ -109,8 +119,23 @@ object EnemyAIController {
 
             if (chosenAttackers.isNotEmpty()) {
                 val chosenIds = chosenAttackers.map { it.instanceId }
+                var nextBoard = state.enemyBoard
+                if (state.enemyHallowedStacks > 0) {
+                    val firstId = chosenIds.first()
+                    nextBoard = nextBoard.map {
+                        if (it.instanceId == firstId) it.copy(power = it.power + state.enemyHallowedStacks) else it
+                    }
+                    logs.add("Hallowed granted ${chosenAttackers.first().template.name} +${state.enemyHallowedStacks}|+0!")
+                }
+                if (state.encounterNode.enemyPowerTitle == "Ready Ranks") {
+                    nextBoard = nextBoard.map {
+                        if (chosenIds.contains(it.instanceId)) it.copy(power = it.power + 1) else it
+                    }
+                    logs.add("Ready Ranks granted Foe's attackers +1|+0!")
+                }
                 logs.add("Foe attacks with ${chosenIds.size} unit(s)! Assign blockers.")
                 return state.copy(
+                    enemyBoard = nextBoard,
                     enemyHasAttackToken = false,
                     playerInitiatedCombat = false,
                     phase = CombatPhase.COMBAT_DECLARE_BLOCK_PHASE,
@@ -151,8 +176,12 @@ object EnemyAIController {
         val isLethalThreat = totalPotentialDamage >= state.enemyNexusHp
         val lowHealthThreshold = state.enemyNexusHp <= 8
 
+        val leveledAsheActive = state.playerBoard.any { it.template.id == "card_ashe" && it.isLeveledUp }
+
         for (atk in attackers) {
-            val eligible = availableBlockers.filter { it.canBlockAttacker(atk) }
+            val eligible = availableBlockers.filter { blk ->
+                blk.canBlockAttacker(atk) && (!leveledAsheActive || blk.effectivePower > 0)
+            }
             if (eligible.isEmpty()) continue
 
             val chosenBlocker = if (isLethalThreat) {
@@ -224,6 +253,13 @@ object EnemyAIController {
             enemyMana = maxOf(0, state.enemyMana - unitUsed),
             enemyHand = CombatEngine.removeFirstTemplate(state.enemyHand, spell.id)
         )
+        if (s.encounterNode.enemyPowerTitle == "Enlightened Harmony") {
+            val healed = minOf(s.enemyMaxHp, s.enemyNexusHp + 1)
+            if (healed > s.enemyNexusHp) {
+                s = s.copy(enemyNexusHp = healed)
+                logs.add("Enlightened Harmony healed Foe Nexus +1 HP.")
+            }
+        }
 
         return if (spell.spellSpeed == SpellSpeed.BURST || spell.spellSpeed == SpellSpeed.FOCUS) {
             s = CombatEngine.resolveSingleSpellEffect(s, spell, sourceIsPlayer = false, logs = logs)
@@ -255,10 +291,12 @@ object EnemyAIController {
 
     private fun isSpellWorthCasting(state: CombatState, spell: CardTemplate): Boolean {
         return when (spell.effectType) {
-            CardEffectType.DEAL_DAMAGE_ANY,
+            CardEffectType.DEAL_DAMAGE_ANY ->
+                state.playerBoard.isNotEmpty() || state.playerNexusHp <= spell.effectValue
             CardEffectType.DEAL_DAMAGE_UNIT_AND_NEXUS,
+            CardEffectType.DEAL_DAMAGE_NEXUS -> true
             CardEffectType.STUN_TARGET,
-            CardEffectType.FROSTBITE_TARGET -> state.playerBoard.isNotEmpty() || spell.effectType == CardEffectType.DEAL_DAMAGE_UNIT_AND_NEXUS
+            CardEffectType.FROSTBITE_TARGET -> state.playerBoard.isNotEmpty()
             CardEffectType.GIVE_BARRIER_AND_DRAW,
             CardEffectType.RALLY_AND_SHIELD -> state.enemyBoard.isNotEmpty()
             CardEffectType.SINGLE_COMBAT_STRIKE ->
