@@ -52,22 +52,26 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      - name: Build Release APK (optional, requires GitHub Secrets)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
+      - name: Build Release APK (when signing secrets are configured)
         env:
-          KEYSTORE_PATH: ${{ github.workspace }}/release-upload-key.jks
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "${KEYSTORE_PATH}"
-          gradle assembleRelease
+          if [ -n "${KEYSTORE_BASE64}" ] && [ -n "${STORE_PASSWORD}" ] && [ -n "${KEY_PASSWORD}" ]; then
+            export KEYSTORE_PATH="${{ github.workspace }}/release-upload-key.jks"
+            echo "${KEYSTORE_BASE64}" | base64 -d > "${KEYSTORE_PATH}"
+            gradle assembleRelease
+          else
+            echo "Release signing secrets not set; skipping release APK build."
+          fi
 
       - name: Upload Release APK Artifact
-        if: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: path-of-champions-release-apk
           path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Attach APK to GitHub Release (on v* tags)

@@ -96,7 +96,7 @@ fun ChampionDetailScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 720.dp)
+                .widthIn(max = 960.dp)
         ) {
             // Top Header
             Row(

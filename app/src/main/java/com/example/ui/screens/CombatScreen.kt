@@ -7,12 +7,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -104,113 +108,214 @@ fun CombatScreen(
 
     BackHandler { showForfeitConfirm = true }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(ObsidianBg),
         contentAlignment = Alignment.TopCenter
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .widthIn(max = 760.dp)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // 1. ENEMY HUD + BOARD
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                EnemyCombatHud(
-                    combat = combat,
-                    onShowLog = { showLogDialog = true }
-                )
+        val isLandscape = maxWidth >= 560.dp
 
-                BoardLane(
-                    label = "FOE BATTLEFIELD (${combat.enemyBoard.size}/6)",
-                    emptyText = "Foe has no units on board",
-                    units = combat.enemyBoard,
-                    isEnemy = true,
-                    combat = combat,
-                    onUnitClick = { unit ->
-                        if (combat.priorityHolder == PriorityHolder.PLAYER &&
-                            combat.phase == CombatPhase.COMBAT_DECLARE_BLOCK_PHASE &&
-                            combat.attackingUnitIds.contains(unit.instanceId)
-                        ) {
-                            if (combat.blockPairings.containsKey(unit.instanceId)) {
-                                onRemoveBlocker(unit.instanceId)
-                            } else {
-                                onSelectEnemyAttackerForBlock(unit.instanceId)
-                            }
-                        } else {
-                            inspectedUnit = unit
-                        }
-                    }
-                )
+        val onEnemyUnitClick: (UnitOnBoard) -> Unit = { unit ->
+            if (combat.priorityHolder == PriorityHolder.PLAYER &&
+                combat.phase == CombatPhase.COMBAT_DECLARE_BLOCK_PHASE &&
+                combat.attackingUnitIds.contains(unit.instanceId)
+            ) {
+                if (combat.blockPairings.containsKey(unit.instanceId)) {
+                    onRemoveBlocker(unit.instanceId)
+                } else {
+                    onSelectEnemyAttackerForBlock(unit.instanceId)
+                }
+            } else {
+                inspectedUnit = unit
             }
+        }
 
-            // 2. CENTER COMBAT LANE / SPELL STACK / ACTION BAR
-            CombatActionStrip(
-                combat = combat,
-                onEnterAttack = onEnterAttack,
-                onCancelAttack = onCancelAttack,
-                onCommitAttack = onCommitAttack,
-                onCommitBlock = onCommitBlock,
-                onResolveStack = onResolveStack,
-                onPassTurn = onPassTurn
-            )
-
-            // 3. PLAYER BOARD + MANA + HAND
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                BoardLane(
-                    label = "YOUR BATTLEFIELD (${combat.playerBoard.size}/6)",
-                    emptyText = "Play followers or your Champion from hand",
-                    units = combat.playerBoard,
-                    isEnemy = false,
-                    combat = combat,
-                    onUnitClick = { unit ->
-                        if (combat.priorityHolder == PriorityHolder.PLAYER) {
-                            when (combat.phase) {
-                                CombatPhase.COMBAT_DECLARE_ATTACK_PHASE -> onToggleAttacker(unit.instanceId)
-                                CombatPhase.COMBAT_DECLARE_BLOCK_PHASE -> {
-                                    val targetEnemy = combat.selectedEnemyAttackerForBlock
-                                        ?: combat.attackingUnitIds.firstOrNull { !combat.blockPairings.containsKey(it) }
-                                    if (targetEnemy != null) {
-                                        onAssignBlocker(targetEnemy, unit.instanceId)
-                                    } else {
-                                        inspectedUnit = unit
-                                    }
-                                }
-                                else -> inspectedUnit = unit
-                            }
+        val onPlayerUnitClick: (UnitOnBoard) -> Unit = { unit ->
+            if (combat.priorityHolder == PriorityHolder.PLAYER) {
+                when (combat.phase) {
+                    CombatPhase.COMBAT_DECLARE_ATTACK_PHASE -> onToggleAttacker(unit.instanceId)
+                    CombatPhase.COMBAT_DECLARE_BLOCK_PHASE -> {
+                        val targetEnemy = combat.selectedEnemyAttackerForBlock
+                            ?: combat.attackingUnitIds.firstOrNull { !combat.blockPairings.containsKey(it) }
+                        if (targetEnemy != null) {
+                            onAssignBlocker(targetEnemy, unit.instanceId)
                         } else {
                             inspectedUnit = unit
                         }
                     }
+                    else -> inspectedUnit = unit
+                }
+            } else {
+                inspectedUnit = unit
+            }
+        }
+
+        if (isLandscape) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 1100.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // LEFT/CENTER: Foe Battlefield, Your Battlefield, Player Hand
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    BoardLane(
+                        label = "FOE BATTLEFIELD (${combat.enemyBoard.size}/6)",
+                        emptyText = "Foe has no units on board",
+                        units = combat.enemyBoard,
+                        isEnemy = true,
+                        combat = combat,
+                        onUnitClick = onEnemyUnitClick,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    BoardLane(
+                        label = "YOUR BATTLEFIELD (${combat.playerBoard.size}/6)",
+                        emptyText = "Play followers or your Champion from hand",
+                        units = combat.playerBoard,
+                        isEnemy = false,
+                        combat = combat,
+                        onUnitClick = onPlayerUnitClick,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(combat.playerHand, key = { it.instanceId }) { handCard ->
+                            val canPlay = combat.canPlayCard(handCard)
+                            val cost = combat.effectivePlayCost(handCard)
+                            CardTile(
+                                template = handCard.template,
+                                effectiveCost = cost,
+                                bonusPower = handCard.bonusPower,
+                                bonusHealth = handCard.bonusHealth,
+                                attachedItems = handCard.attachedItems,
+                                extraKeywords = handCard.extraKeywords,
+                                isFleeting = handCard.isFleeting,
+                                playable = canPlay,
+                                compact = true,
+                                testTag = "hand_card_${handCard.template.id}",
+                                onClick = { inspectedHandCard = handCard },
+                                modifier = Modifier.width(150.dp)
+                            )
+                        }
+                    }
+                }
+
+                // RIGHT TACTICAL RAIL: Enemy HUD, Priority/Action Strip, Player Nexus & Mana
+                Column(
+                    modifier = Modifier
+                        .width(228.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    EnemyCombatHud(
+                        combat = combat,
+                        compactSidebar = true,
+                        onShowLog = { showLogDialog = true }
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    CombatActionStrip(
+                        combat = combat,
+                        verticalSidebar = true,
+                        onEnterAttack = onEnterAttack,
+                        onCancelAttack = onCancelAttack,
+                        onCommitAttack = onCommitAttack,
+                        onCommitBlock = onCommitBlock,
+                        onResolveStack = onResolveStack,
+                        onPassTurn = onPassTurn
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    ManaAndTokenBar(
+                        combat = combat,
+                        compactSidebar = true
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 760.dp)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    EnemyCombatHud(
+                        combat = combat,
+                        compactSidebar = false,
+                        onShowLog = { showLogDialog = true }
+                    )
+
+                    BoardLane(
+                        label = "FOE BATTLEFIELD (${combat.enemyBoard.size}/6)",
+                        emptyText = "Foe has no units on board",
+                        units = combat.enemyBoard,
+                        isEnemy = true,
+                        combat = combat,
+                        onUnitClick = onEnemyUnitClick
+                    )
+                }
+
+                CombatActionStrip(
+                    combat = combat,
+                    verticalSidebar = false,
+                    onEnterAttack = onEnterAttack,
+                    onCancelAttack = onCancelAttack,
+                    onCommitAttack = onCommitAttack,
+                    onCommitBlock = onCommitBlock,
+                    onResolveStack = onResolveStack,
+                    onPassTurn = onPassTurn
                 )
 
-                ManaAndTokenBar(combat = combat)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BoardLane(
+                        label = "YOUR BATTLEFIELD (${combat.playerBoard.size}/6)",
+                        emptyText = "Play followers or your Champion from hand",
+                        units = combat.playerBoard,
+                        isEnemy = false,
+                        combat = combat,
+                        onUnitClick = onPlayerUnitClick
+                    )
 
-                // Player Hand
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(combat.playerHand, key = { it.instanceId }) { handCard ->
-                        val canPlay = combat.canPlayCard(handCard)
-                        val cost = combat.effectivePlayCost(handCard)
-                        CardTile(
-                            template = handCard.template,
-                            effectiveCost = cost,
-                            bonusPower = handCard.bonusPower,
-                            bonusHealth = handCard.bonusHealth,
-                            attachedItems = handCard.attachedItems,
-                            extraKeywords = handCard.extraKeywords,
-                            isFleeting = handCard.isFleeting,
-                            playable = canPlay,
-                            compact = true,
-                            testTag = "hand_card_${handCard.template.id}",
-                            onClick = { inspectedHandCard = handCard },
-                            modifier = Modifier.width(156.dp)
-                        )
+                    ManaAndTokenBar(combat = combat, compactSidebar = false)
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(combat.playerHand, key = { it.instanceId }) { handCard ->
+                            val canPlay = combat.canPlayCard(handCard)
+                            val cost = combat.effectivePlayCost(handCard)
+                            CardTile(
+                                template = handCard.template,
+                                effectiveCost = cost,
+                                bonusPower = handCard.bonusPower,
+                                bonusHealth = handCard.bonusHealth,
+                                attachedItems = handCard.attachedItems,
+                                extraKeywords = handCard.extraKeywords,
+                                isFleeting = handCard.isFleeting,
+                                playable = canPlay,
+                                compact = true,
+                                testTag = "hand_card_${handCard.template.id}",
+                                onClick = { inspectedHandCard = handCard },
+                                modifier = Modifier.width(156.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -416,6 +521,7 @@ fun CombatScreen(
 @Composable
 private fun EnemyCombatHud(
     combat: CombatState,
+    compactSidebar: Boolean = false,
     onShowLog: () -> Unit
 ) {
     Surface(
@@ -424,66 +530,136 @@ private fun EnemyCombatHud(
         color = ObsidianSurface,
         border = BorderStroke(1.dp, CrimsonNexus.copy(alpha = 0.5f))
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+        if (compactSidebar) {
+            Column(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = combat.encounterNode.enemyName,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         color = ParchmentWhite,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
+                    IconButton(
+                        onClick = onShowLog,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("combat_log_button")
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = "Combat Log", tint = HextechGoldBright, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
                         text = "Rnd ${combat.round} • Hand ${combat.enemyHandCount}",
                         style = MaterialTheme.typography.labelSmall,
                         color = ArcaneCyan,
                         modifier = Modifier.testTag("enemy_hand_count")
                     )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = CrimsonNexus.copy(alpha = 0.2f),
+                        border = BorderStroke(1.dp, CrimsonNexus)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Favorite, contentDescription = "Foe HP", tint = CrimsonNexus, modifier = Modifier.size(13.dp))
+                            Text(
+                                text = "${combat.enemyNexusHp}/${combat.enemyMaxHp}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = ParchmentWhite,
+                                modifier = Modifier.testTag("enemy_nexus_hp")
+                            )
+                        }
+                    }
                 }
                 if (combat.encounterNode.enemyPowerTitle.isNotBlank()) {
                     Text(
                         text = "${combat.encounterNode.enemyPowerTitle}: ${combat.encounterNode.enemyPowerDescription}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MutedSilver,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-
+        } else {
             Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = CrimsonNexus.copy(alpha = 0.2f),
-                    border = BorderStroke(1.dp, CrimsonNexus)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Favorite, contentDescription = "Foe HP", tint = CrimsonNexus, modifier = Modifier.size(14.dp))
                         Text(
-                            text = "${combat.enemyNexusHp}/${combat.enemyMaxHp}",
-                            style = MaterialTheme.typography.labelMedium,
+                            text = combat.encounterNode.enemyName,
+                            style = MaterialTheme.typography.titleMedium,
                             color = ParchmentWhite,
-                            modifier = Modifier.testTag("enemy_nexus_hp")
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Rnd ${combat.round} • Hand ${combat.enemyHandCount}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ArcaneCyan,
+                            modifier = Modifier.testTag("enemy_hand_count")
+                        )
+                    }
+                    if (combat.encounterNode.enemyPowerTitle.isNotBlank()) {
+                        Text(
+                            text = "${combat.encounterNode.enemyPowerTitle}: ${combat.encounterNode.enemyPowerDescription}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MutedSilver,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
-                IconButton(onClick = onShowLog, modifier = Modifier.testTag("combat_log_button")) {
-                    Icon(Icons.Default.History, contentDescription = "Combat Log", tint = HextechGoldBright)
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = CrimsonNexus.copy(alpha = 0.2f),
+                        border = BorderStroke(1.dp, CrimsonNexus)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Favorite, contentDescription = "Foe HP", tint = CrimsonNexus, modifier = Modifier.size(14.dp))
+                            Text(
+                                text = "${combat.enemyNexusHp}/${combat.enemyMaxHp}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = ParchmentWhite,
+                                modifier = Modifier.testTag("enemy_nexus_hp")
+                            )
+                        }
+                    }
+                    IconButton(onClick = onShowLog, modifier = Modifier.testTag("combat_log_button")) {
+                        Icon(Icons.Default.History, contentDescription = "Combat Log", tint = HextechGoldBright)
+                    }
                 }
             }
         }
@@ -497,26 +673,27 @@ private fun BoardLane(
     units: List<UnitOnBoard>,
     isEnemy: Boolean,
     combat: CombatState,
-    onUnitClick: (UnitOnBoard) -> Unit
+    onUnitClick: (UnitOnBoard) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = ObsidianSurface.copy(alpha = 0.65f),
         border = BorderStroke(1.dp, SlateBorder)
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isEnemy) CrimsonNexus else ArcaneCyan
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             if (units.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(74.dp),
+                        .heightIn(min = 60.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(emptyText, style = MaterialTheme.typography.bodySmall, color = MutedSilver)
@@ -564,6 +741,7 @@ private fun BoardLane(
 @Composable
 private fun CombatActionStrip(
     combat: CombatState,
+    verticalSidebar: Boolean = false,
     onEnterAttack: () -> Unit,
     onCancelAttack: () -> Unit,
     onCommitAttack: () -> Unit,
@@ -572,6 +750,17 @@ private fun CombatActionStrip(
     onPassTurn: () -> Unit
 ) {
     val isPlayerPriority = combat.priorityHolder == PriorityHolder.PLAYER
+    val statusText = when {
+        !isPlayerPriority -> "Foe is thinking..."
+        combat.phase == CombatPhase.COMBAT_DECLARE_ATTACK_PHASE ->
+            "Tap allies to Attack (${combat.attackingUnitIds.size} selected)"
+        combat.phase == CombatPhase.COMBAT_DECLARE_BLOCK_PHASE ->
+            "Tap Foe then Ally to Block (${combat.blockPairings.size} paired)"
+        combat.phase == CombatPhase.SPELL_STACK_PHASE ->
+            "Spell Stack open — respond or Resolve"
+        else -> if (combat.playerHasAttackToken) "Your Initiative (Attack Token Ready)" else "Your Initiative"
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -581,7 +770,10 @@ private fun CombatActionStrip(
             if (isPlayerPriority) HextechGold.copy(alpha = 0.5f) else CrimsonNexus.copy(alpha = 0.5f)
         )
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             if (combat.spellStack.isNotEmpty()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -592,69 +784,66 @@ private fun CombatActionStrip(
                         text = "Stack: ${combat.spellStack.joinToString(" -> ") { it.card.name }}",
                         style = MaterialTheme.typography.labelMedium,
                         color = EpicViolet,
-                        maxLines = 1,
+                        maxLines = if (verticalSidebar) 2 else 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    TextButton(
-                        enabled = isPlayerPriority,
-                        onClick = onResolveStack,
-                        modifier = Modifier.testTag("resolve_stack_button")
-                    ) {
-                        Text(
-                            text = if (isPlayerPriority) "Resolve Stack" else "Foe Priority",
-                            color = if (isPlayerPriority) ArcaneCyan else MutedSilver
-                        )
+                    if (!verticalSidebar) {
+                        TextButton(
+                            enabled = isPlayerPriority,
+                            onClick = onResolveStack,
+                            modifier = Modifier.testTag("resolve_stack_button")
+                        ) {
+                            Text(
+                                text = if (isPlayerPriority) "Resolve Stack" else "Foe Priority",
+                                color = if (isPlayerPriority) ArcaneCyan else MutedSilver
+                            )
+                        }
                     }
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            if (verticalSidebar) {
                 Text(
-                    text = when {
-                        !isPlayerPriority -> "Foe is thinking..."
-                        combat.phase == CombatPhase.COMBAT_DECLARE_ATTACK_PHASE ->
-                            "Tap allies to Attack (${combat.attackingUnitIds.size} selected)"
-                        combat.phase == CombatPhase.COMBAT_DECLARE_BLOCK_PHASE ->
-                            "Tap Foe then Ally to Block (${combat.blockPairings.size} paired)"
-                        combat.phase == CombatPhase.SPELL_STACK_PHASE ->
-                            "Spell Stack open — respond or Resolve"
-                        else -> if (combat.playerHasAttackToken) "Your Initiative (Attack Token Ready)" else "Your Initiative"
-                    },
+                    text = statusText,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isPlayerPriority) ParchmentWhite else MutedSilver,
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .testTag("combat_priority_status")
                 )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     when (combat.phase) {
                         CombatPhase.COMBAT_DECLARE_ATTACK_PHASE -> {
-                            OutlinedButton(
-                                enabled = isPlayerPriority,
-                                onClick = onCancelAttack
-                            ) {
-                                Text("Cancel", color = MutedSilver)
-                            }
                             Button(
                                 enabled = isPlayerPriority && combat.attackingUnitIds.isNotEmpty(),
                                 onClick = onCommitAttack,
-                                modifier = Modifier.testTag("commit_attack_button"),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("commit_attack_button"),
                                 colors = ButtonDefaults.buttonColors(containerColor = LegendaryAmber, contentColor = ObsidianBg)
                             ) {
-                                Text("Strike!")
+                                Text("Strike! (${combat.attackingUnitIds.size})")
+                            }
+                            OutlinedButton(
+                                enabled = isPlayerPriority,
+                                onClick = onCancelAttack,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp)
+                            ) {
+                                Text("Cancel", color = MutedSilver)
                             }
                         }
                         CombatPhase.COMBAT_DECLARE_BLOCK_PHASE -> {
                             Button(
                                 enabled = isPlayerPriority,
                                 onClick = onCommitBlock,
-                                modifier = Modifier.testTag("commit_block_button"),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("commit_block_button"),
                                 colors = ButtonDefaults.buttonColors(containerColor = ArcaneCyan, contentColor = ObsidianBg)
                             ) {
                                 Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -666,7 +855,10 @@ private fun CombatActionStrip(
                             Button(
                                 enabled = isPlayerPriority,
                                 onClick = onPassTurn,
-                                modifier = Modifier.testTag("end_round_button"),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("end_round_button"),
                                 colors = ButtonDefaults.buttonColors(containerColor = HextechGold, contentColor = ObsidianBg)
                             ) {
                                 Text(if (isPlayerPriority) "Resolve Stack" else "Wait...")
@@ -677,7 +869,10 @@ private fun CombatActionStrip(
                                 Button(
                                     enabled = isPlayerPriority,
                                     onClick = onEnterAttack,
-                                    modifier = Modifier.testTag("enter_attack_button"),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .testTag("enter_attack_button"),
                                     colors = ButtonDefaults.buttonColors(containerColor = LegendaryAmber, contentColor = ObsidianBg)
                                 ) {
                                     Icon(Icons.Default.SportsKabaddi, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -688,7 +883,10 @@ private fun CombatActionStrip(
                             Button(
                                 enabled = isPlayerPriority,
                                 onClick = onPassTurn,
-                                modifier = Modifier.testTag("end_round_button"),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("end_round_button"),
                                 colors = ButtonDefaults.buttonColors(containerColor = HextechGold, contentColor = ObsidianBg)
                             ) {
                                 Text(
@@ -703,75 +901,247 @@ private fun CombatActionStrip(
                         }
                     }
                 }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isPlayerPriority) ParchmentWhite else MutedSilver,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("combat_priority_status")
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        when (combat.phase) {
+                            CombatPhase.COMBAT_DECLARE_ATTACK_PHASE -> {
+                                OutlinedButton(
+                                    enabled = isPlayerPriority,
+                                    onClick = onCancelAttack
+                                ) {
+                                    Text("Cancel", color = MutedSilver)
+                                }
+                                Button(
+                                    enabled = isPlayerPriority && combat.attackingUnitIds.isNotEmpty(),
+                                    onClick = onCommitAttack,
+                                    modifier = Modifier.testTag("commit_attack_button"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = LegendaryAmber, contentColor = ObsidianBg)
+                                ) {
+                                    Text("Strike!")
+                                }
+                            }
+                            CombatPhase.COMBAT_DECLARE_BLOCK_PHASE -> {
+                                Button(
+                                    enabled = isPlayerPriority,
+                                    onClick = onCommitBlock,
+                                    modifier = Modifier.testTag("commit_block_button"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ArcaneCyan, contentColor = ObsidianBg)
+                                ) {
+                                    Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Confirm Block (${combat.blockPairings.size})")
+                                }
+                            }
+                            CombatPhase.SPELL_STACK_PHASE -> {
+                                Button(
+                                    enabled = isPlayerPriority,
+                                    onClick = onPassTurn,
+                                    modifier = Modifier.testTag("end_round_button"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = HextechGold, contentColor = ObsidianBg)
+                                ) {
+                                    Text(if (isPlayerPriority) "Resolve Stack" else "Wait...")
+                                }
+                            }
+                            else -> {
+                                if (combat.playerHasAttackToken && combat.playerBoard.any { it.canAttack }) {
+                                    Button(
+                                        enabled = isPlayerPriority,
+                                        onClick = onEnterAttack,
+                                        modifier = Modifier.testTag("enter_attack_button"),
+                                        colors = ButtonDefaults.buttonColors(containerColor = LegendaryAmber, contentColor = ObsidianBg)
+                                    ) {
+                                        Icon(Icons.Default.SportsKabaddi, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Attack")
+                                    }
+                                }
+                                Button(
+                                    enabled = isPlayerPriority,
+                                    onClick = onPassTurn,
+                                    modifier = Modifier.testTag("end_round_button"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = HextechGold, contentColor = ObsidianBg)
+                                ) {
+                                    Text(
+                                        when {
+                                            !isPlayerPriority -> "Foe Turn"
+                                            combat.spellStack.isNotEmpty() -> "Resolve Stack"
+                                            combat.consecutivePasses >= 1 -> "End Round"
+                                            else -> "Pass"
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ManaAndTokenBar(combat: CombatState) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+private fun ManaAndTokenBar(
+    combat: CombatState,
+    compactSidebar: Boolean = false
+) {
+    if (compactSidebar) {
         Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = EmeraldHeal.copy(alpha = 0.16f),
-            border = BorderStroke(1.dp, EmeraldHeal.copy(alpha = 0.6f))
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = ObsidianSurface,
+            border = BorderStroke(1.dp, SlateBorder)
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            Column(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(Icons.Default.Favorite, contentDescription = "Your Nexus HP", tint = EmeraldHeal, modifier = Modifier.size(15.dp))
-                Text(
-                    text = "${combat.playerNexusHp}/${combat.playerMaxHp}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = ParchmentWhite,
-                    modifier = Modifier.testTag("player_nexus_hp")
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = EmeraldHeal.copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, EmeraldHeal.copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Favorite, contentDescription = "Your Nexus HP", tint = EmeraldHeal, modifier = Modifier.size(14.dp))
+                            Text(
+                                text = "${combat.playerNexusHp}/${combat.playerMaxHp}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = ParchmentWhite,
+                                modifier = Modifier.testTag("player_nexus_hp")
+                            )
+                        }
+                    }
+                    if (combat.playerHasAttackToken) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(LegendaryAmber.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Bolt, contentDescription = "Attack Token", tint = LegendaryAmber, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        color = ManaBlue.copy(alpha = 0.18f),
+                        border = BorderStroke(1.dp, ManaBlue)
+                    ) {
+                        Text(
+                            text = "Mana ${combat.playerMana}/${combat.playerMaxMana}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = ParchmentWhite,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        color = SpellManaCyan.copy(alpha = 0.18f),
+                        border = BorderStroke(1.dp, SpellManaCyan)
+                    ) {
+                        Text(
+                            text = "Spell ${combat.playerSpellMana}/3",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = ArcaneCyan,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        )
+                    }
+                }
             }
         }
-
+    } else {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = ManaBlue.copy(alpha = 0.18f),
-                border = BorderStroke(1.dp, ManaBlue)
+                color = EmeraldHeal.copy(alpha = 0.16f),
+                border = BorderStroke(1.dp, EmeraldHeal.copy(alpha = 0.6f))
             ) {
-                Text(
-                    text = "Mana ${combat.playerMana}/${combat.playerMaxMana}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ParchmentWhite,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = SpellManaCyan.copy(alpha = 0.18f),
-                border = BorderStroke(1.dp, SpellManaCyan)
-            ) {
-                Text(
-                    text = "Spell ${combat.playerSpellMana}/3",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ArcaneCyan,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                )
-            }
-            if (combat.playerHasAttackToken) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(LegendaryAmber.copy(alpha = 0.25f)),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    Icon(Icons.Default.Bolt, contentDescription = "Attack Token", tint = LegendaryAmber, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Favorite, contentDescription = "Your Nexus HP", tint = EmeraldHeal, modifier = Modifier.size(15.dp))
+                    Text(
+                        text = "${combat.playerNexusHp}/${combat.playerMaxHp}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = ParchmentWhite,
+                        modifier = Modifier.testTag("player_nexus_hp")
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = ManaBlue.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, ManaBlue)
+                ) {
+                    Text(
+                        text = "Mana ${combat.playerMana}/${combat.playerMaxMana}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = ParchmentWhite,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = SpellManaCyan.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, SpellManaCyan)
+                ) {
+                    Text(
+                        text = "Spell ${combat.playerSpellMana}/3",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = ArcaneCyan,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+                if (combat.playerHasAttackToken) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(LegendaryAmber.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Bolt, contentDescription = "Attack Token", tint = LegendaryAmber, modifier = Modifier.size(16.dp))
+                    }
                 }
             }
         }

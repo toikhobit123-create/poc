@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,7 +22,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Casino
@@ -90,20 +93,44 @@ fun CardDraftScreen(
         run = run,
         modifier = modifier
     ) {
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            itemsIndexed(offers) { idx, offer ->
-                CardTile(
-                    template = offer.card,
-                    effectiveCost = maxOf(0, offer.card.cost - offer.attachedItem.costReduction),
-                    bonusPower = offer.attachedItem.bonusPower,
-                    bonusHealth = offer.attachedItem.bonusHealth,
-                    attachedItems = listOf(offer.attachedItem),
-                    testTag = "draft_card_option_$idx",
-                    onClick = { onPick(offer) }
-                )
+        BoxWithConstraints(modifier = Modifier.weight(1f)) {
+            if (maxWidth >= 560.dp) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    offers.forEachIndexed { idx, offer ->
+                        CardTile(
+                            template = offer.card,
+                            effectiveCost = maxOf(0, offer.card.cost - offer.attachedItem.costReduction),
+                            bonusPower = offer.attachedItem.bonusPower,
+                            bonusHealth = offer.attachedItem.bonusHealth,
+                            attachedItems = listOf(offer.attachedItem),
+                            testTag = "draft_card_option_$idx",
+                            onClick = { onPick(offer) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    itemsIndexed(offers) { idx, offer ->
+                        CardTile(
+                            template = offer.card,
+                            effectiveCost = maxOf(0, offer.card.cost - offer.attachedItem.costReduction),
+                            bonusPower = offer.attachedItem.bonusPower,
+                            bonusHealth = offer.attachedItem.bonusHealth,
+                            attachedItems = listOf(offer.attachedItem),
+                            testTag = "draft_card_option_$idx",
+                            onClick = { onPick(offer) }
+                        )
+                    }
+                }
             }
         }
         Spacer(modifier = Modifier.height(10.dp))
@@ -582,19 +609,20 @@ fun RunSummaryScreen(
         modifier = modifier
             .fillMaxSize()
             .background(ObsidianBg)
-            .padding(20.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
-            modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth(),
+            modifier = Modifier.widthIn(max = 580.dp).fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
             color = ObsidianSurface,
             border = BorderStroke(2.dp, if (summary.isVictory) HextechGoldBright else CrimsonNexus)
         ) {
             Column(
-                modifier = Modifier.padding(22.dp),
+                modifier = Modifier.padding(18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.EmojiEvents,
@@ -677,8 +705,8 @@ private fun EncounterFrame(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 720.dp)
-                .padding(16.dp)
+                .widthIn(max = 960.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

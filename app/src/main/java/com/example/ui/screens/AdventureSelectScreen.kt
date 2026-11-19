@@ -71,7 +71,7 @@ fun AdventureSelectScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 720.dp)
+                .widthIn(max = 960.dp)
         ) {
             Row(
                 modifier = Modifier

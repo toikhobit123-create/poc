@@ -7,9 +7,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -92,162 +94,222 @@ fun AdventureMapScreen(
     val rowHeightDp = 96.dp
     val totalHeight = rowHeightDp * (maxRow + 1) + 40.dp
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(ObsidianBg),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .widthIn(max = 720.dp)
+    val mapCanvasContent: @Composable (Modifier) -> Unit = { mapModifier ->
+        Box(
+            modifier = mapModifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            // Top bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(ObsidianSurface)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = onBackHome,
-                    modifier = Modifier.testTag("map_back_home_button")
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Save & Home", tint = ParchmentWhite)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = adventure.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = HextechGoldBright
-                    )
-                    Text(
-                        text = "${adventure.difficultyLabel} • Select next glowing path node",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MutedSilver
-                    )
-                }
-            }
-
-            RunResourceHud(
-                run = run,
-                onOpenDeck = { showDeck = true },
-                onAbandon = onAbandonRun,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-            )
-
-            // DAG Canvas + Nodes
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                    .fillMaxWidth()
+                    .height(totalHeight)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(totalHeight)
-                ) {
-                    // Ley-line paths connecting parent -> nextNodeIds
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val rowSpacing = size.height / (maxRow + 1).toFloat()
-                        fun nodeCenter(node: MapNode): Offset {
-                            val x = when (node.column) {
-                                0 -> size.width * 0.24f
-                                2 -> size.width * 0.76f
-                                else -> size.width * 0.50f
-                            }
-                            val y = rowSpacing * node.row + rowSpacing * 0.5f
-                            return Offset(x, y)
+                // Ley-line paths connecting parent -> nextNodeIds
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val rowSpacing = size.height / (maxRow + 1).toFloat()
+                    fun nodeCenter(node: MapNode): Offset {
+                        val x = when (node.column) {
+                            0 -> size.width * 0.24f
+                            2 -> size.width * 0.76f
+                            else -> size.width * 0.50f
                         }
+                        val y = rowSpacing * node.row + rowSpacing * 0.5f
+                        return Offset(x, y)
+                    }
 
-                        adventure.mapNodes.forEach { fromNode ->
-                            val start = nodeCenter(fromNode)
-                            fromNode.nextNodeIds.forEach { targetId ->
-                                val toNode = adventure.mapNodes.find { it.id == targetId }
-                                if (toNode != null) {
-                                    val end = nodeCenter(toNode)
-                                    val isPathActive = run.currentNodeId == fromNode.id &&
-                                        isNodeAvailable(run, toNode)
-                                    val isPathCompleted = run.completedNodeIds.contains(fromNode.id) &&
-                                        run.completedNodeIds.contains(toNode.id)
-                                    val lineColor = when {
-                                        isPathActive -> HextechGoldBright
-                                        isPathCompleted -> EmeraldHeal.copy(alpha = 0.75f)
-                                        else -> SlateBorder
-                                    }
+                    adventure.mapNodes.forEach { fromNode ->
+                        val start = nodeCenter(fromNode)
+                        fromNode.nextNodeIds.forEach { targetId ->
+                            val toNode = adventure.mapNodes.find { it.id == targetId }
+                            if (toNode != null) {
+                                val end = nodeCenter(toNode)
+                                val isPathActive = run.currentNodeId == fromNode.id &&
+                                    isNodeAvailable(run, toNode)
+                                val isPathCompleted = run.completedNodeIds.contains(fromNode.id) &&
+                                    run.completedNodeIds.contains(toNode.id)
+                                val lineColor = when {
+                                    isPathActive -> HextechGoldBright
+                                    isPathCompleted -> EmeraldHeal.copy(alpha = 0.75f)
+                                    else -> SlateBorder
+                                }
 
-                                    val path = Path().apply {
-                                        moveTo(start.x, start.y)
-                                        val midY = (start.y + end.y) / 2f
-                                        cubicTo(start.x, midY, end.x, midY, end.x, end.y)
-                                    }
-                                    drawPath(
-                                        path = path,
-                                        color = lineColor,
-                                        style = Stroke(
-                                            width = if (isPathActive) 6f else 4f,
-                                            cap = StrokeCap.Round
-                                        )
+                                val path = Path().apply {
+                                    moveTo(start.x, start.y)
+                                    val midY = (start.y + end.y) / 2f
+                                    cubicTo(start.x, midY, end.x, midY, end.x, end.y)
+                                }
+                                drawPath(
+                                    path = path,
+                                    color = lineColor,
+                                    style = Stroke(
+                                        width = if (isPathActive) 6f else 4f,
+                                        cap = StrokeCap.Round
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Render rows bottom-up or top-down (row 0 at top -> row 6 Final Boss at bottom)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    for (rowIndex in 0..maxRow) {
+                        val nodesInRow = adventure.mapNodes.filter { it.row == rowIndex }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(rowHeightDp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val left = nodesInRow.find { it.column == 0 }
+                            val mid = nodesInRow.find { it.column == 1 }
+                            val right = nodesInRow.find { it.column == 2 }
+
+                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                if (left != null) {
+                                    MapNodeChip(
+                                        node = left,
+                                        completed = run.completedNodeIds.contains(left.id),
+                                        available = isNodeAvailable(run, left),
+                                        isCurrent = run.currentNodeId == left.id,
+                                        onClick = { onSelectNode(left.id) }
+                                    )
+                                }
+                            }
+                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                if (mid != null) {
+                                    MapNodeChip(
+                                        node = mid,
+                                        completed = run.completedNodeIds.contains(mid.id),
+                                        available = isNodeAvailable(run, mid),
+                                        isCurrent = run.currentNodeId == mid.id,
+                                        onClick = { onSelectNode(mid.id) }
+                                    )
+                                }
+                            }
+                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                if (right != null) {
+                                    MapNodeChip(
+                                        node = right,
+                                        completed = run.completedNodeIds.contains(right.id),
+                                        available = isNodeAvailable(run, right),
+                                        isCurrent = run.currentNodeId == right.id,
+                                        onClick = { onSelectNode(right.id) }
                                     )
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
+    }
 
-                    // Render rows bottom-up or top-down (row 0 at top -> row 6 Final Boss at bottom)
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        for (rowIndex in 0..maxRow) {
-                            val nodesInRow = adventure.mapNodes.filter { it.row == rowIndex }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(rowHeightDp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val left = nodesInRow.find { it.column == 0 }
-                                val mid = nodesInRow.find { it.column == 1 }
-                                val right = nodesInRow.find { it.column == 2 }
-
-                                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    if (left != null) {
-                                        MapNodeChip(
-                                            node = left,
-                                            completed = run.completedNodeIds.contains(left.id),
-                                            available = isNodeAvailable(run, left),
-                                            isCurrent = run.currentNodeId == left.id,
-                                            onClick = { onSelectNode(left.id) }
-                                        )
-                                    }
-                                }
-                                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    if (mid != null) {
-                                        MapNodeChip(
-                                            node = mid,
-                                            completed = run.completedNodeIds.contains(mid.id),
-                                            available = isNodeAvailable(run, mid),
-                                            isCurrent = run.currentNodeId == mid.id,
-                                            onClick = { onSelectNode(mid.id) }
-                                        )
-                                    }
-                                }
-                                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    if (right != null) {
-                                        MapNodeChip(
-                                            node = right,
-                                            completed = run.completedNodeIds.contains(right.id),
-                                            available = isNodeAvailable(run, right),
-                                            isCurrent = run.currentNodeId == right.id,
-                                            onClick = { onSelectNode(right.id) }
-                                        )
-                                    }
-                                }
-                            }
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .background(ObsidianBg),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        if (maxWidth >= 600.dp) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 1080.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(280.dp)
+                        .fillMaxHeight()
+                        .background(ObsidianSurface)
+                        .verticalScroll(rememberScrollState())
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onBackHome,
+                            modifier = Modifier.testTag("map_back_home_button")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Save & Home", tint = ParchmentWhite)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = adventure.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = HextechGoldBright,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = adventure.difficultyLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MutedSilver
+                            )
                         }
                     }
+
+                    RunResourceHud(
+                        run = run,
+                        onOpenDeck = { showDeck = true },
+                        onAbandon = onAbandonRun
+                    )
+
+                    Text(
+                        text = "Select the next glowing node along the ley-line path.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MutedSilver
+                    )
                 }
+
+                mapCanvasContent(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 720.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ObsidianSurface)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBackHome,
+                        modifier = Modifier.testTag("map_back_home_button")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Save & Home", tint = ParchmentWhite)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = adventure.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = HextechGoldBright
+                        )
+                        Text(
+                            text = "${adventure.difficultyLabel} • Select next glowing path node",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MutedSilver
+                        )
+                    }
+                }
+
+                RunResourceHud(
+                    run = run,
+                    onOpenDeck = { showDeck = true },
+                    onAbandon = onAbandonRun,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+
+                mapCanvasContent(Modifier.fillMaxSize())
             }
         }
     }
